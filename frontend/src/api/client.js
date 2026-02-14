@@ -1,32 +1,89 @@
-// frontend/src/api/client.js
-// Gerenciador de porta do backend
-let backendPort = null;
+// frontend/src/api/client.js - MODIFICADO PARA REDE LOCAL
+// Gerenciador de conexão com backend via rede local
 
-// Função para obter a porta do backend
-async function getBackendPort() {
-  if (backendPort) return backendPort;
+let backendPort = null;
+let backendHost = null;
+
+// Função para obter configuração do servidor (IP + porta)
+async function getBackendConfig() {
+  // Se já temos configuração, retornar
+  if (backendHost && backendPort) {
+    return { host: backendHost, port: backendPort };
+  }
   
-  // Se estiver no Electron, pegar porta dinâmica
+  // 1. Tentar obter do Electron (quando rodando empacotado)
   if (window.electronAPI) {
     try {
       backendPort = await window.electronAPI.getBackendPort();
-      console.log('🔌 Porta do backend (Electron):', backendPort);
-      return backendPort;
+      backendHost = 'localhost'; // Electron sempre usa localhost
+      console.log('🔌 Conectando via Electron:', `${backendHost}:${backendPort}`);
+      return { host: backendHost, port: backendPort };
     } catch (error) {
       console.error('Erro ao obter porta do Electron:', error);
     }
   }
   
-  // Fallback para desenvolvimento (navegador)
+  // 2. Tentar obter do localStorage (configuração manual de rede)
+  const savedHost = localStorage.getItem('backend_host');
+  const savedPort = localStorage.getItem('backend_port');
+  
+  if (savedHost && savedPort) {
+    backendHost = savedHost;
+    backendPort = parseInt(savedPort);
+    console.log('🌐 Usando servidor salvo:', `${backendHost}:${backendPort}`);
+    return { host: backendHost, port: backendPort };
+  }
+  
+  // 3. Fallback para desenvolvimento local
+  backendHost = 'localhost';
   backendPort = 3001;
-  console.log('🔌 Porta do backend (Browser):', backendPort);
-  return backendPort;
+  console.log('💻 Modo desenvolvimento:', `${backendHost}:${backendPort}`);
+  return { host: backendHost, port: backendPort };
+}
+
+// Função para configurar servidor manualmente (para rede local)
+export async function configureBackendServer(host, port) {
+  console.log('⚙️ Configurando servidor:', `${host}:${port}`);
+  
+  // Testar conexão
+  try {
+    const response = await fetch(`http://${host}:${port}/health`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Servidor não respondeu corretamente');
+    }
+    
+    const data = await response.json();
+    console.log('✅ Servidor acessível:', data);
+    
+    // Salvar configuração
+    localStorage.setItem('backend_host', host);
+    localStorage.setItem('backend_port', port.toString());
+    
+    // Atualizar variáveis globais
+    backendHost = host;
+    backendPort = port;
+    
+    return { success: true, data };
+  } catch (error) {
+    console.error('❌ Erro ao conectar:', error);
+    throw new Error(`Não foi possível conectar ao servidor ${host}:${port}`);
+  }
 }
 
 // Função para obter URL da API
 async function getApiUrl() {
-  const port = await getBackendPort();
-  return `http://localhost:${port}/api`;
+  const { host, port } = await getBackendConfig();
+  return `http://${host}:${port}/api`;
+}
+
+// Função para obter URL do WebSocket
+export async function getSocketUrl() {
+  const { host, port } = await getBackendConfig();
+  return `http://${host}:${port}`;
 }
 
 // Helper para fazer requisições
@@ -46,16 +103,21 @@ async function fetchAPI(endpoint, options = {}) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  console.log(`📡 Fazendo requisição: ${API_URL}${endpoint}`);
+  console.log(`📡 Requisição: ${API_URL}${endpoint}`);
   
-  const response = await fetch(`${API_URL}${endpoint}`, config);
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
-    throw new Error(error.error || 'Erro na requisição');
-  }
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, config);
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+      throw new Error(error.error || 'Erro na requisição');
+    }
 
-  return response.json();
+    return response.json();
+  } catch (error) {
+    console.error('❌ Erro na requisição:', error.message);
+    throw error;
+  }
 }
 
 // API de Autenticação
@@ -191,4 +253,12 @@ export const serviceOrders = {
   },
 };
 
-export default { auth, users, serviceOrders };
+// API de informações de rede (útil para debug)
+export const network = {
+  getInfo: async () => {
+    const data = await fetchAPI('/network/info');
+    return data;
+  }
+};
+
+export default { auth, users, serviceOrders, network, configureBackendServer, getSocketUrl };
