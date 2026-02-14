@@ -1,0 +1,69 @@
+# Dependências
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+frontend/dist/
+
+# Electron
+out/
+.webpack/
+
+# Logs
+logs/
+*.log
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Banco de dados
+*.db
+*.db-shm
+*.db-wal
+osmanager.db*
+
+# Prisma
+backend/prisma/migrations/
+
+# Temp
+tmp/
+temp/
+*.tmp
+
+# Instaladores
+*.exe
+*.msi
+*.dmg
+*.pkg
+*.deb
+*.rpm
+
+# Windows
+$RECYCLE.BIN/
+*.cab
+*.msix
+*.msm
+*.msp
+
+# Backups
+*.backup
+*.bak

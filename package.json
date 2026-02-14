@@ -1,0 +1,94 @@
+{
+  "name": "os-manager-desktop",
+  "version": "1.0.0",
+  "description": "Sistema de Gestão de Ordens de Serviço - Aplicativo Desktop",
+  "main": "electron/main.js",
+  "author": "OS Manager Team",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "prebuild": "npm run build:frontend && npm run build:backend",
+    "build": "electron-builder",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm install --omit=dev && npx prisma generate",
+    "dist": "npm run prebuild && electron-builder",
+    "dist:dir": "npm run prebuild && electron-builder --dir",
+    "clean": "rimraf dist backend/node_modules/.cache",
+    "postinstall": "cd backend && npm install && npx prisma generate"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.13.3",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.osmanager.desktop",
+    "productName": "OS Manager",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/src/**/*",
+      "backend/prisma/**/*",
+      "backend/node_modules/**/*",
+      "backend/package.json",
+      "backend/package-lock.json",
+      "!backend/node_modules/.cache/**/*",
+      "!backend/node_modules/.vite/**/*",
+      "!backend/.env*",
+      "!backend/*.log",
+      "!backend/node_modules/**/test/**",
+      "!backend/node_modules/**/tests/**",
+      "!backend/node_modules/**/*.md",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "backend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/dist",
+        "to": "app/frontend/dist",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OS Manager",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "include": "installer.nsh",
+      "warningsAsErrors": false
+    },
+    "compression": "store",
+    "removePackageScripts": false,
+    "npmRebuild": false
+  }
+}

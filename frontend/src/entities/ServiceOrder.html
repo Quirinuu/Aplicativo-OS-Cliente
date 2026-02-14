@@ -1,0 +1,98 @@
+{
+  "name": "ServiceOrder",
+  "type": "object",
+  "properties": {
+    "os_number": {
+      "type": "string",
+      "description": "N\u00famero \u00fanico da OS"
+    },
+    "equipment_name": {
+      "type": "string",
+      "description": "Nome do equipamento"
+    },
+    "client_name": {
+      "type": "string",
+      "description": "Nome do cliente/setor"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "URGENT"
+      ],
+      "default": "MEDIUM",
+      "description": "Prioridade da OS"
+    },
+    "current_status": {
+      "type": "string",
+      "enum": [
+        "RECEIVED",
+        "ANALYSIS",
+        "MAINTENANCE",
+        "WAITING_PARTS",
+        "READY_FOR_PICKUP",
+        "COMPLETED"
+      ],
+      "default": "RECEIVED",
+      "description": "Status atual da OS"
+    },
+    "equipment_class": {
+      "type": "string",
+      "enum": [
+        "MONITOR",
+        "VENTILADOR",
+        "BOMBA_INFUSAO",
+        "DESFIBRILADOR",
+        "ELETROCARDIOGRAFO",
+        "ULTRASSOM",
+        "RAIO_X",
+        "AUTOCLAVE",
+        "OUTROS"
+      ],
+      "description": "Classe do equipamento"
+    },
+    "serial_number": {
+      "type": "string",
+      "description": "N\u00famero de s\u00e9rie do equipamento"
+    },
+    "accessories": {
+      "type": "string",
+      "description": "Acess\u00f3rios que acompanham o equipamento"
+    },
+    "has_previous_defect": {
+      "type": "boolean",
+      "default": false,
+      "description": "Possui defeito anterior?"
+    },
+    "previous_defect_description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do defeito anterior"
+    },
+    "optional_description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o adicional/observa\u00e7\u00f5es"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "Email do t\u00e9cnico respons\u00e1vel"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data de conclus\u00e3o"
+    },
+    "final_comment": {
+      "type": "string",
+      "description": "Coment\u00e1rio final de conclus\u00e3o"
+    }
+  },
+  "required": [
+    "os_number",
+    "equipment_name",
+    "client_name",
+    "priority",
+    "current_status"
+  ]
+}

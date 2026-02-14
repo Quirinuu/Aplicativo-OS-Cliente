@@ -1,0 +1,33 @@
+{
+  "name": "Comment",
+  "type": "object",
+  "properties": {
+    "service_order_id": {
+      "type": "string",
+      "description": "ID da OS relacionada"
+    },
+    "comment_type": {
+      "type": "string",
+      "enum": [
+        "DIAGNOSIS",
+        "REPAIR",
+        "NOTE",
+        "FINAL"
+      ],
+      "default": "NOTE",
+      "description": "Tipo do coment\u00e1rio"
+    },
+    "body": {
+      "type": "string",
+      "description": "Conte\u00fado do coment\u00e1rio"
+    },
+    "author_name": {
+      "type": "string",
+      "description": "Nome do autor"
+    }
+  },
+  "required": [
+    "service_order_id",
+    "body"
+  ]
+}

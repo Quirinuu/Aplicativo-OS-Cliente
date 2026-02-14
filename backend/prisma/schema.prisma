@@ -1,0 +1,120 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String?  @unique
+  passwordHash String
+  fullName     String
+  role         String   // admin, reception, tech
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdServiceOrders ServiceOrder[]             @relation("CreatedOrders")
+  assignedOrders       ServiceOrderTechnician[]
+  comments             Comment[]
+  auditLogs            AuditLog[]
+
+  @@map("users")
+}
+
+model ServiceOrder {
+  id                         String    @id @default(uuid())
+  osNumber                   String    @unique
+  equipmentName              String
+  clientName                 String
+  priority                   String
+  accessories                String?
+  serialNumber               String?
+  hasPreviousDefect          Boolean   @default(false)
+  previousDefectDescription  String?
+  currentStatus              String    @default("PENDING")
+  equipmentClass             String
+  optionalDescription        String?
+  createdByUserId            String
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  completedAt                DateTime?
+
+  createdBy  User                     @relation("CreatedOrders", fields: [createdByUserId], references: [id])
+  technicians ServiceOrderTechnician[]
+  comments   Comment[]
+
+  @@map("service_orders")
+}
+
+model ServiceOrderTechnician {
+  id             String   @id @default(uuid())
+  serviceOrderId String
+  userId         String
+  assignedAt     DateTime @default(now())
+
+  serviceOrder ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([serviceOrderId, userId])
+  @@map("service_order_technicians")
+}
+
+model Comment {
+  id             String   @id @default(uuid())
+  serviceOrderId String
+  userId         String
+  commentType    String
+  content        String
+  createdAt      DateTime @default(now())
+
+  serviceOrder ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@map("comments")
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String   // JSON string
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+model Permission {
+  id      String  @id @default(uuid())
+  role    String
+  action  String
+  allowed Boolean @default(true)
+
+  @@unique([role, action])
+  @@map("permissions")
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  description String
+  oldData     String?   // JSON string
+  newData     String?   // JSON string
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@map("audit_logs")
+}
