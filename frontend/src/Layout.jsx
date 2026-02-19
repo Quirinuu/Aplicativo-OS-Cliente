@@ -1,3 +1,4 @@
+// frontend/src/Layout.jsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -13,18 +14,21 @@ import {
   Avatar,
   AvatarFallback,
 } from "@/components/ui/avatar";
-import { 
-  ClipboardList, 
-  Archive, 
-  Users, 
-  LogOut, 
+import {
+  ClipboardList,
+  Archive,
+  Users,
+  LogOut,
   User,
   Menu,
   X,
   Wrench,
   Shield,
   Settings,
-  Home
+  Home,
+  Wifi,
+  WifiOff,
+  Server,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -34,6 +38,7 @@ import { socketService } from '@/api/socket';
 export default function Layout({ children, currentPageName }) {
   const [user, setUser] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isConnected, setIsConnected] = useState(socketService.isConnected);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -41,16 +46,19 @@ export default function Layout({ children, currentPageName }) {
     api.auth.me()
       .then(userData => {
         setUser(userData);
-        // 👇 IMPORTANTE: Salvar user no localStorage
         localStorage.setItem('user', JSON.stringify(userData));
       })
       .catch(() => {
-        // Se não autenticado, redirecionar para login
-        if (location.pathname !== '/login') {
-          navigate('/login');
-        }
+        if (location.pathname !== '/login') navigate('/login');
       });
   }, [navigate, location.pathname]);
+
+  // Monitora status do WebSocket
+  useEffect(() => {
+    setIsConnected(socketService.isConnected);
+    const cleanup = socketService.onConnectionChange(setIsConnected);
+    return cleanup;
+  }, []);
 
   const handleLogout = () => {
     api.auth.logout();
@@ -59,7 +67,19 @@ export default function Layout({ children, currentPageName }) {
     toast.success('Logout realizado');
   };
 
+  const handleChangeServer = () => {
+    // Limpa tudo e manda pra tela de configuração
+    api.auth.logout();
+    socketService.disconnect();
+    localStorage.removeItem('serverConfig');
+    navigate('/setup');
+    toast.info('Configure o servidor');
+  };
+
   const isAdmin = user?.role === 'admin';
+
+  // Verifica se existe tela de setup (app cliente)
+  const hasSetupPage = !!localStorage.getItem('serverConfig');
 
   const navItems = [
     { name: 'Dashboard', label: 'OS Abertas', icon: ClipboardList, path: '/dashboard' },
@@ -69,7 +89,6 @@ export default function Layout({ children, currentPageName }) {
 
   const getPageTitle = () => {
     if (currentPageName) return currentPageName;
-    
     switch (location.pathname) {
       case '/dashboard': return 'Dashboard';
       case '/history': return 'Histórico';
@@ -84,15 +103,12 @@ export default function Layout({ children, currentPageName }) {
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <div className="container mx-auto flex h-16 items-center px-4 sm:px-6">
+
           {/* Logo e Menu Mobile */}
           <div className="flex items-center gap-4">
-            <button
-              className="md:hidden p-2"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
+            <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-
             <Link to="/dashboard" className="flex items-center space-x-2">
               <Wrench className="h-6 w-6 text-blue-600" />
               <span className="hidden md:inline text-xl font-bold text-gray-900">OS Manager</span>
@@ -100,7 +116,7 @@ export default function Layout({ children, currentPageName }) {
             </Link>
           </div>
 
-          {/* Menu de Navegação - Desktop */}
+          {/* Nav Desktop */}
           <nav className="hidden md:flex items-center space-x-6 ml-10">
             {navItems.map((item) => (
               <Link
@@ -117,14 +133,30 @@ export default function Layout({ children, currentPageName }) {
             ))}
           </nav>
 
-          {/* Título da página atual */}
+          {/* Título da página */}
           <div className="flex-1 flex justify-center md:justify-start md:ml-10">
             <h1 className="text-lg font-semibold text-gray-900">{getPageTitle()}</h1>
           </div>
 
-          {/* Menu do usuário */}
-          <div className="flex items-center space-x-4">
-            {/* Dropdown do usuário */}
+          {/* Indicador de conexão + Menu usuário */}
+          <div className="flex items-center space-x-3">
+
+            {/* Badge de status WebSocket */}
+            <div
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                isConnected
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : 'bg-red-50 text-red-600 border-red-200'
+              }`}
+              title={isConnected ? 'Sincronização em tempo real ativa' : 'Sem conexão com o servidor'}
+            >
+              {isConnected
+                ? <><Wifi className="w-3 h-3" /> Online</>
+                : <><WifiOff className="w-3 h-3" /> Offline</>
+              }
+            </div>
+
+            {/* Avatar + Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0">
@@ -141,50 +173,49 @@ export default function Layout({ children, currentPageName }) {
                     <p className="text-sm font-medium leading-none">
                       {user?.fullName || user?.username}
                     </p>
-                    <p className="text-xs leading-none text-gray-500">
-                      {user?.email}
-                    </p>
+                    <p className="text-xs leading-none text-gray-500">{user?.email}</p>
                     <div className="flex items-center mt-1">
                       {user?.role === 'admin' ? (
-                        <>
-                          <Shield className="w-3 h-3 mr-1 text-blue-600" />
-                          <span className="text-xs text-blue-600">Administrador</span>
-                        </>
+                        <><Shield className="w-3 h-3 mr-1 text-blue-600" /><span className="text-xs text-blue-600">Administrador</span></>
                       ) : (
-                        <>
-                          <User className="w-3 h-3 mr-1 text-gray-500" />
-                          <span className="text-xs text-gray-500">Técnico</span>
-                        </>
+                        <><User className="w-3 h-3 mr-1 text-gray-500" /><span className="text-xs text-gray-500">Técnico</span></>
                       )}
                     </div>
                   </div>
                 </DropdownMenuLabel>
+
                 <DropdownMenuSeparator />
+
                 <DropdownMenuItem onClick={() => navigate('/dashboard')}>
-                  <Home className="w-4 h-4 mr-2" />
-                  Dashboard
+                  <Home className="w-4 h-4 mr-2" /> Dashboard
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/profile')}>
-                  <User className="w-4 h-4 mr-2" />
-                  Meu Perfil
+                  <User className="w-4 h-4 mr-2" /> Meu Perfil
                 </DropdownMenuItem>
+
                 {isAdmin && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => navigate('/users')}>
-                      <Users className="w-4 h-4 mr-2" />
-                      Usuários
+                      <Users className="w-4 h-4 mr-2" /> Usuários
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate('/settings')}>
-                      <Settings className="w-4 h-4 mr-2" />
-                      Configurações
+                      <Settings className="w-4 h-4 mr-2" /> Configurações
                     </DropdownMenuItem>
                   </>
                 )}
+
                 <DropdownMenuSeparator />
+
+                {/* Opção de trocar servidor — visível quando serverConfig existe (app cliente) */}
+                {hasSetupPage && (
+                  <DropdownMenuItem onClick={handleChangeServer} className="text-orange-600">
+                    <Server className="w-4 h-4 mr-2" /> Trocar Servidor
+                  </DropdownMenuItem>
+                )}
+
                 <DropdownMenuItem onClick={handleLogout} className="text-red-600">
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sair
+                  <LogOut className="w-4 h-4 mr-2" /> Sair
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -215,11 +246,22 @@ export default function Layout({ children, currentPageName }) {
                     {item.label}
                   </Link>
                 ))}
+
                 <div className="pt-4 border-t">
-                  <div className="py-2">
-                    <p className="text-sm font-medium text-gray-900">{user?.fullName || user?.username}</p>
-                    <p className="text-xs text-gray-500">{user?.email}</p>
+                  {/* Status mobile */}
+                  <div className={`flex items-center gap-1.5 mb-2 text-xs font-medium ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+                    {isConnected ? <><Wifi className="w-3 h-3" /> Online</> : <><WifiOff className="w-3 h-3" /> Offline</>}
                   </div>
+                  <p className="text-sm font-medium text-gray-900">{user?.fullName || user?.username}</p>
+                  <p className="text-xs text-gray-500 mb-2">{user?.email}</p>
+                  {hasSetupPage && (
+                    <button
+                      onClick={handleChangeServer}
+                      className="w-full text-left py-2 text-sm text-orange-600 hover:text-orange-800"
+                    >
+                      Trocar Servidor
+                    </button>
+                  )}
                   <button
                     onClick={handleLogout}
                     className="w-full text-left py-2 text-sm text-red-600 hover:text-red-800"
@@ -233,7 +275,7 @@ export default function Layout({ children, currentPageName }) {
         </AnimatePresence>
       </header>
 
-      {/* Main Content */}
+      {/* Conteúdo */}
       <main className="container mx-auto px-4 py-6 sm:px-6">
         {children}
       </main>
