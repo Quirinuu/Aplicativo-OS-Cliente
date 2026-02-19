@@ -1,96 +1,30 @@
-// frontend/src/api/client.js - MODIFICADO PARA REDE LOCAL
-// Gerenciador de conexão com backend via rede local
+// frontend/src/api/client.js
+// Versão cliente: conecta a servidor remoto configurado pelo usuário
 
-let backendPort = null;
-let backendHost = null;
+// Retorna a URL base do servidor (ex: http://192.168.0.100:5000)
+export function getServerBaseURL() {
+  // 1. Prioridade: variável de ambiente (útil em dev)
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+  }
 
-// Função para obter configuração do servidor (IP + porta)
-async function getBackendConfig() {
-  // Se já temos configuração, retornar
-  if (backendHost && backendPort) {
-    return { host: backendHost, port: backendPort };
-  }
-  
-  // 1. Tentar obter do Electron (quando rodando empacotado)
-  if (window.electronAPI) {
-    try {
-      backendPort = await window.electronAPI.getBackendPort();
-      backendHost = 'localhost'; // Electron sempre usa localhost
-      console.log('🔌 Conectando via Electron:', `${backendHost}:${backendPort}`);
-      return { host: backendHost, port: backendPort };
-    } catch (error) {
-      console.error('Erro ao obter porta do Electron:', error);
-    }
-  }
-  
-  // 2. Tentar obter do localStorage (configuração manual de rede)
-  const savedHost = localStorage.getItem('backend_host');
-  const savedPort = localStorage.getItem('backend_port');
-  
-  if (savedHost && savedPort) {
-    backendHost = savedHost;
-    backendPort = parseInt(savedPort);
-    console.log('🌐 Usando servidor salvo:', `${backendHost}:${backendPort}`);
-    return { host: backendHost, port: backendPort };
-  }
-  
-  // 3. Fallback para desenvolvimento local
-  backendHost = 'localhost';
-  backendPort = 3001;
-  console.log('💻 Modo desenvolvimento:', `${backendHost}:${backendPort}`);
-  return { host: backendHost, port: backendPort };
-}
-
-// Função para configurar servidor manualmente (para rede local)
-export async function configureBackendServer(host, port) {
-  console.log('⚙️ Configurando servidor:', `${host}:${port}`);
-  
-  // Testar conexão
+  // 2. Config salva no localStorage (definida pelo usuário na tela de configuração)
   try {
-    const response = await fetch(`http://${host}:${port}/health`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
-    if (!response.ok) {
-      throw new Error('Servidor não respondeu corretamente');
+    const saved = localStorage.getItem('serverConfig');
+    if (saved) {
+      const config = JSON.parse(saved);
+      if (config?.baseURL) return config.baseURL.replace(/\/$/, '');
     }
-    
-    const data = await response.json();
-    console.log('✅ Servidor acessível:', data);
-    
-    // Salvar configuração
-    localStorage.setItem('backend_host', host);
-    localStorage.setItem('backend_port', port.toString());
-    
-    // Atualizar variáveis globais
-    backendHost = host;
-    backendPort = port;
-    
-    return { success: true, data };
-  } catch (error) {
-    console.error('❌ Erro ao conectar:', error);
-    throw new Error(`Não foi possível conectar ao servidor ${host}:${port}`);
-  }
+  } catch {}
+
+  // 3. Fallback para dev local
+  return 'http://localhost:5000';
 }
 
-// Função para obter URL da API
-async function getApiUrl() {
-  const { host, port } = await getBackendConfig();
-  return `http://${host}:${port}/api`;
-}
-
-// Função para obter URL do WebSocket
-export async function getSocketUrl() {
-  const { host, port } = await getBackendConfig();
-  return `http://${host}:${port}`;
-}
-
-// Helper para fazer requisições
 async function fetchAPI(endpoint, options = {}) {
-  const API_URL = await getApiUrl();
+  const BASE = getServerBaseURL();
   const token = localStorage.getItem('token');
-  
+
   const config = {
     ...options,
     headers: {
@@ -103,21 +37,17 @@ async function fetchAPI(endpoint, options = {}) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  console.log(`📡 Requisição: ${API_URL}${endpoint}`);
-  
-  try {
-    const response = await fetch(`${API_URL}${endpoint}`, config);
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
-      throw new Error(error.error || 'Erro na requisição');
-    }
+  const url = `${BASE}/api${endpoint}`;
+  console.log(`📡 ${options.method || 'GET'} ${url}`);
 
-    return response.json();
-  } catch (error) {
-    console.error('❌ Erro na requisição:', error.message);
-    throw error;
+  const response = await fetch(url, config);
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+    throw new Error(error.error || `Erro ${response.status}`);
   }
+
+  return response.json();
 }
 
 // API de Autenticação
@@ -127,15 +57,10 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     });
-    
-    if (data.token) {
-      localStorage.setItem('token', data.token);
-    }
-    
-    if (data.user) {
-      localStorage.setItem('user', JSON.stringify(data.user));
-    }
-    
+
+    if (data.token) localStorage.setItem('token', data.token);
+    if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+
     return data;
   },
 
@@ -179,9 +104,7 @@ export const users = {
   },
 
   delete: async (id) => {
-    return fetchAPI(`/users/${id}`, {
-      method: 'DELETE',
-    });
+    return fetchAPI(`/users/${id}`, { method: 'DELETE' });
   },
 };
 
@@ -189,16 +112,13 @@ export const users = {
 export const serviceOrders = {
   list: async (filters = {}) => {
     const params = new URLSearchParams();
-    
     if (filters.status && filters.status !== 'all') params.append('status', filters.status);
     if (filters.priority && filters.priority !== 'all') params.append('priority', filters.priority);
     if (filters.clientName) params.append('clientName', filters.clientName);
     if (filters.equipmentName) params.append('equipmentName', filters.equipmentName);
-    
-    const queryString = params.toString();
-    const endpoint = queryString ? `/os?${queryString}` : '/os';
-    
-    const data = await fetchAPI(endpoint);
+
+    const qs = params.toString();
+    const data = await fetchAPI(qs ? `/os?${qs}` : '/os');
     return data.orders;
   },
 
@@ -224,9 +144,7 @@ export const serviceOrders = {
   },
 
   delete: async (id) => {
-    return fetchAPI(`/os/${id}`, {
-      method: 'DELETE',
-    });
+    return fetchAPI(`/os/${id}`, { method: 'DELETE' });
   },
 
   addComment: async (osId, commentData) => {
@@ -239,26 +157,15 @@ export const serviceOrders = {
 
   history: async (filters = {}) => {
     const params = new URLSearchParams();
-    
     if (filters.startDate) params.append('startDate', filters.startDate);
     if (filters.endDate) params.append('endDate', filters.endDate);
     if (filters.clientName) params.append('clientName', filters.clientName);
     if (filters.equipmentName) params.append('equipmentName', filters.equipmentName);
-    
-    const queryString = params.toString();
-    const endpoint = queryString ? `/os/history?${queryString}` : '/os/history';
-    
-    const data = await fetchAPI(endpoint);
+
+    const qs = params.toString();
+    const data = await fetchAPI(qs ? `/os/history?${qs}` : '/os/history');
     return data.orders;
   },
 };
 
-// API de informações de rede (útil para debug)
-export const network = {
-  getInfo: async () => {
-    const data = await fetchAPI('/network/info');
-    return data;
-  }
-};
-
-export default { auth, users, serviceOrders, network, configureBackendServer, getSocketUrl };
+export default { auth, users, serviceOrders };
