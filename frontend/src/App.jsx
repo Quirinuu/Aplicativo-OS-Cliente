@@ -1,4 +1,4 @@
-// frontend/src/App.jsx
+// frontend/src/App.jsx  ← APP CLIENTE
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import OSDetails from './pages/OSDetails';
 import Users from './pages/Users';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import ServerConfig from './pages/ServerConfig';
 import Layout from './Layout';
 import Login from './pages/Login';
 import { socketService } from './api/socket';
@@ -19,10 +20,22 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
-      staleTime: 30 * 1000, // 30 segundos — dados ficam frescos por menos tempo
+      staleTime: 30 * 1000,
     },
   },
 });
+
+function isServerConfigured() {
+  try {
+    const s = localStorage.getItem('serverConfig');
+    return !!(s && JSON.parse(s)?.baseURL);
+  } catch { return false; }
+}
+
+function RequireServer({ children }) {
+  if (!isServerConfigured()) return <Navigate to="/setup" replace />;
+  return children;
+}
 
 function ProtectedRoute({ children, requireAdmin = false }) {
   const token = localStorage.getItem('token');
@@ -32,36 +45,26 @@ function ProtectedRoute({ children, requireAdmin = false }) {
   return children;
 }
 
-// Componente interno que tem acesso ao queryClient via hook
+// Liga os eventos do socket ao React Query (dentro do QueryClientProvider)
 function SocketManager() {
   const qc = useQueryClient();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!token || !isServerConfigured()) return;
 
     socketService.connect(token);
 
-    // Quando uma OS é criada/atualizada/deletada → invalida as queries para refetch automático
-    const onCreated = () => {
-      qc.invalidateQueries({ queryKey: ['orders'] });
-    };
+    const onCreated = () => qc.invalidateQueries({ queryKey: ['orders'] });
     const onUpdated = ({ order }) => {
-      // Atualiza o cache da OS específica imediatamente, sem refetch
       if (order?.id) {
         qc.setQueryData(['order', String(order.id)], order);
-        qc.setQueryData(['order', order.id], order);
       }
       qc.invalidateQueries({ queryKey: ['orders'] });
     };
-    const onDeleted = () => {
-      qc.invalidateQueries({ queryKey: ['orders'] });
-    };
+    const onDeleted = () => qc.invalidateQueries({ queryKey: ['orders'] });
     const onComment = ({ osId }) => {
-      if (osId) {
-        qc.invalidateQueries({ queryKey: ['order', String(osId)] });
-        qc.invalidateQueries({ queryKey: ['order', osId] });
-      }
+      if (osId) qc.invalidateQueries({ queryKey: ['order', String(osId)] });
     };
 
     socketService.on('os:created', onCreated);
@@ -81,68 +84,66 @@ function SocketManager() {
   return null;
 }
 
-function App() {
+export default function App() {
   return (
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <Toaster richColors position="top-right" />
         <SocketManager />
         <Routes>
-          <Route path="/login" element={<Login />} />
+          {/* Configuração do servidor — primeiro acesso */}
+          <Route path="/setup" element={<ServerConfig />} />
+
+          <Route path="/login" element={
+            <RequireServer><Login /></RequireServer>
+          } />
 
           <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Layout currentPageName="Dashboard">
-                <Dashboard />
-              </Layout>
-            </ProtectedRoute>
+            <RequireServer><ProtectedRoute>
+              <Layout currentPageName="Dashboard"><Dashboard /></Layout>
+            </ProtectedRoute></RequireServer>
           } />
 
           <Route path="/history" element={
-            <ProtectedRoute>
-              <Layout currentPageName="Histórico">
-                <History />
-              </Layout>
-            </ProtectedRoute>
+            <RequireServer><ProtectedRoute>
+              <Layout currentPageName="Histórico"><History /></Layout>
+            </ProtectedRoute></RequireServer>
           } />
 
           <Route path="/os/:id" element={
-            <ProtectedRoute>
-              <Layout currentPageName="Detalhes da OS">
-                <OSDetails />
-              </Layout>
-            </ProtectedRoute>
+            <RequireServer><ProtectedRoute>
+              <Layout currentPageName="Detalhes da OS"><OSDetails /></Layout>
+            </ProtectedRoute></RequireServer>
           } />
 
           <Route path="/users" element={
-            <ProtectedRoute requireAdmin>
-              <Layout currentPageName="Usuários">
-                <Users />
-              </Layout>
-            </ProtectedRoute>
+            <RequireServer><ProtectedRoute requireAdmin>
+              <Layout currentPageName="Usuários"><Users /></Layout>
+            </ProtectedRoute></RequireServer>
           } />
 
           <Route path="/profile" element={
-            <ProtectedRoute>
-              <Layout currentPageName="Meu Perfil">
-                <Profile />
-              </Layout>
-            </ProtectedRoute>
+            <RequireServer><ProtectedRoute>
+              <Layout currentPageName="Meu Perfil"><Profile /></Layout>
+            </ProtectedRoute></RequireServer>
           } />
 
           <Route path="/settings" element={
-            <ProtectedRoute requireAdmin>
-              <Layout currentPageName="Configurações">
-                <Settings />
-              </Layout>
-            </ProtectedRoute>
+            <RequireServer><ProtectedRoute requireAdmin>
+              <Layout currentPageName="Configurações"><Settings /></Layout>
+            </ProtectedRoute></RequireServer>
           } />
 
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={
+            isServerConfigured()
+              ? <Navigate to="/dashboard" replace />
+              : <Navigate to="/setup" replace />
+          } />
+
           <Route path="*" element={
             <div className="min-h-screen flex items-center justify-center">
               <div className="text-center">
-                <h1 className="text-2xl font-bold text-slate-800 mb-2">404 - Página não encontrada</h1>
+                <h1 className="text-2xl font-bold text-slate-800 mb-2">404 — Página não encontrada</h1>
                 <a href="/dashboard" className="text-blue-600 hover:text-blue-800">Voltar ao Dashboard</a>
               </div>
             </div>
@@ -152,5 +153,3 @@ function App() {
     </BrowserRouter>
   );
 }
-
-export default App;
