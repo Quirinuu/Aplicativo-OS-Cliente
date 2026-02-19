@@ -1,18 +1,39 @@
 // frontend/src/api/socket.js
 import { io } from 'socket.io-client';
 import { toast } from 'sonner';
-import { getServerBaseURL } from './client';
+
+// Mesma lógica do client.js — não importa de lá para evitar dependência circular
+function getBackendURL() {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
+  }
+  try {
+    const saved = localStorage.getItem('serverConfig');
+    if (saved) {
+      const config = JSON.parse(saved);
+      if (config?.baseURL) return config.baseURL.replace(/\/$/, '');
+    }
+  } catch {}
+  return 'http://localhost:5000';
+}
 
 class SocketService {
   constructor() {
     this.socket = null;
     this.listeners = new Map();
+    this._connectionListeners = [];
   }
 
   connect(token) {
     if (this.socket?.connected) return;
 
-    const SERVER_URL = getServerBaseURL();
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
+    const SERVER_URL = getBackendURL();
     console.log('🔌 Conectando socket em:', SERVER_URL);
 
     this.socket = io(SERVER_URL, {
@@ -26,34 +47,39 @@ class SocketService {
     this.socket.on('connect', () => {
       console.log('✅ WebSocket conectado:', this.socket.id);
       toast.success('Sincronização em tempo real ativada', { duration: 2000 });
+      this._notifyConnection(true);
     });
 
     this.socket.on('disconnect', () => {
       console.log('❌ WebSocket desconectado');
-      toast.warning('Sincronização pausada', { duration: 2000 });
+      toast.warning('Sincronização offline', { duration: 3000 });
+      this._notifyConnection(false);
     });
 
     this.socket.on('connect_error', (error) => {
       console.error('Erro WebSocket:', error.message);
+      this._notifyConnection(false);
     });
 
-    // Repassar eventos do servidor para os listeners registrados
+    // Encaminha eventos do servidor para os listeners registrados
     ['os:created', 'os:updated', 'os:deleted', 'os:comment', 'server:info'].forEach(event => {
       this.socket.on(event, (data) => {
-        this._emit(event, data);
+        console.log(`📨 ${event}`, data);
+        this._fire(event, data);
       });
     });
   }
 
   disconnect() {
     if (this.socket) {
+      this.socket.removeAllListeners();
       this.socket.disconnect();
       this.socket = null;
-      this.listeners.clear();
     }
+    this.listeners.clear();
+    this._connectionListeners = [];
   }
 
-  // Registrar listener de evento
   on(event, callback) {
     if (!this.listeners.has(event)) this.listeners.set(event, []);
     this.listeners.get(event).push(callback);
@@ -67,14 +93,26 @@ class SocketService {
     }
   }
 
-  _emit(event, data) {
-    if (this.listeners.has(event)) {
-      this.listeners.get(event).forEach(cb => cb(data));
-    }
+  // Registra listener de status; retorna função de cleanup
+  onConnectionChange(callback) {
+    this._connectionListeners.push(callback);
+    return () => {
+      this._connectionListeners = this._connectionListeners.filter(c => c !== callback);
+    };
   }
 
   get isConnected() {
     return this.socket?.connected ?? false;
+  }
+
+  _fire(event, data) {
+    (this.listeners.get(event) || []).forEach(cb => {
+      try { cb(data); } catch (e) { console.error(`Listener ${event}:`, e); }
+    });
+  }
+
+  _notifyConnection(status) {
+    this._connectionListeners.forEach(cb => { try { cb(status); } catch (e) {} });
   }
 }
 
