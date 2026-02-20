@@ -14,7 +14,6 @@ import { socketService } from '@/api/socket';
 
 const priorityOrder = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
-// Funções auxiliares para gerenciar ordem customizada no localStorage
 const getCustomOrder = () => {
   try {
     const stored = localStorage.getItem('osCustomOrder');
@@ -38,113 +37,70 @@ export default function Dashboard() {
   });
   const [user, setUser] = useState(null);
   const [customOrderMap, setCustomOrderMap] = useState(getCustomOrder());
-  const [isSocketConnected, setIsSocketConnected] = useState(false);
-  
+  // FIX 1: usa socketService.isConnected (getter), não isSocketConnected()
+  const [isSocketConnected, setIsSocketConnected] = useState(socketService.isConnected);
+
   const queryClient = useQueryClient();
 
-  // Carregar usuário
   useEffect(() => {
     api.auth.me()
-      .then(user => {
-        setUser(user);
-      })
-      .catch((error) => {
-        console.error('Erro ao carregar usuário:', error);
-      });
+      .then(u => setUser(u))
+      .catch((error) => console.error('Erro ao carregar usuário:', error));
   }, []);
 
-  // ============== WEBSOCKET - SINCRONIZAÇÃO EM TEMPO REAL ==============
-  
+  // ============== WEBSOCKET ==============
   useEffect(() => {
-    // Conectar WebSocket
     const token = localStorage.getItem('token');
     if (token) {
-      console.log('🔌 Iniciando conexão WebSocket...');
       socketService.connect(token);
     }
 
-    // Verificar status de conexão periodicamente
+    // FIX 1: socketService.isConnected é getter, não método
     const statusInterval = setInterval(() => {
-      setIsSocketConnected(socketService.isSocketConnected());
+      setIsSocketConnected(socketService.isConnected);
     }, 1000);
 
-    // Handler: Nova OS criada
+    // FIX 2: React Query v5 — invalidateQueries recebe objeto { queryKey }
     const handleOSCreated = (data) => {
-      console.log('📥 [WebSocket] Nova OS recebida:', data);
-      
-      // Invalidar cache para recarregar dados
-      queryClient.invalidateQueries(['orders']);
-      
-      // Notificar usuário
+      console.log('📥 Nova OS:', data);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.info('Nova OS criada!', {
-        description: `#${data.order.osNumber} - ${data.order.equipmentName}`,
+        description: `#${data?.order?.osNumber} - ${data?.order?.equipmentName}`,
         duration: 3000
       });
     };
 
-    // Handler: OS atualizada
     const handleOSUpdated = (data) => {
-      console.log('📝 [WebSocket] OS atualizada:', data);
-      
-      // Atualizar cache diretamente para resposta mais rápida
-      queryClient.setQueryData(['orders'], (oldData) => {
-        if (!oldData) return oldData;
-        
-        return oldData.map(order => 
-          order.id === data.order.id ? data.order : order
-        );
-      });
-      
-      // Também invalidar para garantir sincronização
-      queryClient.invalidateQueries(['orders']);
-      
-      // Notificar usuário
+      console.log('📝 OS atualizada:', data);
+      // FIX 3: não tenta atualizar ['orders'] direto pois a key real é ['orders', filters]
+      // invalida tudo que começa com 'orders'
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.info('OS atualizada!', {
-        description: `#${data.order.osNumber}`,
+        description: `#${data?.order?.osNumber}`,
         duration: 2000
       });
     };
 
-    // Handler: OS deletada
     const handleOSDeleted = (data) => {
-      console.log('🗑️ [WebSocket] OS deletada:', data);
-      
-      // Remover do cache diretamente
-      queryClient.setQueryData(['orders'], (oldData) => {
-        if (!oldData) return oldData;
-        return oldData.filter(order => order.id !== data.orderId);
-      });
-      
-      // Invalidar cache
-      queryClient.invalidateQueries(['orders']);
-      
-      // Notificar usuário
-      toast.info('OS removida', {
-        duration: 2000
-      });
+      console.log('🗑️ OS deletada:', data);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.info('OS removida', { duration: 2000 });
     };
 
-    // Handler: Novo comentário
     const handleOSComment = (data) => {
-      console.log('💬 [WebSocket] Novo comentário:', data);
-      
-      // Atualizar cache se a OS estiver carregada
-      queryClient.invalidateQueries(['orders']);
-      
-      // Notificar usuário
-      toast.info('Novo comentário adicionado', {
-        description: `OS #${data.osId}`,
+      console.log('💬 Novo comentário:', data);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.info('Novo comentário', {
+        description: `OS #${data?.osId}`,
         duration: 2000
       });
     };
 
-    // Registrar listeners
     socketService.on('os:created', handleOSCreated);
     socketService.on('os:updated', handleOSUpdated);
     socketService.on('os:deleted', handleOSDeleted);
     socketService.on('os:comment', handleOSComment);
 
-    // Cleanup ao desmontar
     return () => {
       clearInterval(statusInterval);
       socketService.off('os:created', handleOSCreated);
@@ -154,23 +110,20 @@ export default function Dashboard() {
     };
   }, [queryClient]);
 
-  // ============== QUERIES E MUTATIONS ==============
-
+  // ============== QUERIES ==============
   const { data: orders = [], isLoading, refetch } = useQuery({
     queryKey: ['orders', filters],
     queryFn: async () => {
       const searchFilters = {};
-      
       if (filters.search) {
         searchFilters.clientName = filters.search;
         searchFilters.equipmentName = filters.search;
       }
       if (filters.priority !== 'all') searchFilters.priority = filters.priority;
       if (filters.status !== 'all') searchFilters.status = filters.status;
-      
       return api.serviceOrders.list(searchFilters);
     },
-    refetchInterval: 30000, // Recarregar a cada 30s como fallback
+    refetchInterval: 30000,
   });
 
   const { data: users = [] } = useQuery({
@@ -181,7 +134,7 @@ export default function Dashboard() {
   const createMutation = useMutation({
     mutationFn: (data) => api.serviceOrders.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['orders']);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       setShowForm(false);
       toast.success('OS criada com sucesso!');
     },
@@ -193,7 +146,7 @@ export default function Dashboard() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => api.serviceOrders.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['orders']);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.success('Prioridade atualizada!');
     },
     onError: (error) => {
@@ -201,26 +154,17 @@ export default function Dashboard() {
     }
   });
 
-  // ============== HANDLERS ==============
-
   const handleCreateOS = async (data) => {
     await createMutation.mutateAsync(data);
   };
 
   const handlePriorityChange = async (orderId, newPriority) => {
-    await updateMutation.mutateAsync({
-      id: orderId,
-      data: { priority: newPriority }
-    });
+    await updateMutation.mutateAsync({ id: orderId, data: { priority: newPriority } });
   };
 
   const handleReorder = (newOrder) => {
-    // Criar mapa de ordem customizada
     const newOrderMap = {};
-    newOrder.forEach((order, index) => {
-      newOrderMap[order.id] = index;
-    });
-    
+    newOrder.forEach((order, index) => { newOrderMap[order.id] = index; });
     setCustomOrderMap(newOrderMap);
     saveCustomOrder(newOrderMap);
   };
@@ -229,19 +173,17 @@ export default function Dashboard() {
     setFilters({ search: '', priority: 'all', status: 'all', equipment: 'all' });
   };
 
-  // ============== ORDENAÇÃO COM LÓGICA INTELIGENTE ==============
-
+  // ============== ORDENAÇÃO ==============
   const sortedOrders = useMemo(() => {
     const filtered = orders.filter(order => {
       if (order.currentStatus === 'COMPLETED') return false;
-      
       if (filters.search) {
         const search = filters.search.toLowerCase();
-        const matchSearch = 
+        const match =
           order.osNumber?.toLowerCase().includes(search) ||
           order.clientName?.toLowerCase().includes(search) ||
           order.equipmentName?.toLowerCase().includes(search);
-        if (!matchSearch) return false;
+        if (!match) return false;
       }
       if (filters.priority !== 'all' && order.priority !== filters.priority) return false;
       if (filters.status !== 'all' && order.currentStatus !== filters.status) return false;
@@ -249,34 +191,24 @@ export default function Dashboard() {
       return true;
     });
 
-    // Separar urgentes e não-urgentes
     const urgent = filtered.filter(o => o.priority === 'URGENT');
     const nonUrgent = filtered.filter(o => o.priority !== 'URGENT');
 
-    // Ordenar por ordem customizada ou data
     const sortByCustomOrder = (a, b) => {
       const orderA = customOrderMap[a.id];
       const orderB = customOrderMap[b.id];
-      
-      if (orderA !== undefined && orderB !== undefined) {
-        return orderA - orderB;
-      }
+      if (orderA !== undefined && orderB !== undefined) return orderA - orderB;
       if (orderA !== undefined) return -1;
       if (orderB !== undefined) return 1;
-      
       return new Date(a.createdAt) - new Date(b.createdAt);
     };
 
     urgent.sort(sortByCustomOrder);
-    
-    // Ordenar não-urgentes por prioridade e depois por ordem customizada
     nonUrgent.sort((a, b) => {
-      const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
-      if (priorityDiff !== 0) return priorityDiff;
-      return sortByCustomOrder(a, b);
+      const diff = priorityOrder[a.priority] - priorityOrder[b.priority];
+      return diff !== 0 ? diff : sortByCustomOrder(a, b);
     });
 
-    // Urgentes sempre no topo
     return [...urgent, ...nonUrgent];
   }, [orders, filters, customOrderMap]);
 
@@ -285,8 +217,8 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
-        {/* Header */}
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 md:mb-8"
@@ -296,23 +228,15 @@ export default function Dashboard() {
               <h1 className="text-2xl md:text-3xl font-bold text-slate-800">
                 Ordens de Serviço
               </h1>
-              {/* Indicador de conexão WebSocket */}
               <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
-                isSocketConnected 
-                  ? 'bg-green-100 text-green-700' 
+                isSocketConnected
+                  ? 'bg-green-100 text-green-700'
                   : 'bg-gray-100 text-gray-500'
               }`}>
-                {isSocketConnected ? (
-                  <>
-                    <Wifi className="w-3 h-3" />
-                    <span>Sincronizado</span>
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="w-3 h-3" />
-                    <span>Offline</span>
-                  </>
-                )}
+                {isSocketConnected
+                  ? <><Wifi className="w-3 h-3" /><span>Sincronizado</span></>
+                  : <><WifiOff className="w-3 h-3" /><span>Offline</span></>
+                }
               </div>
             </div>
             <p className="text-slate-500 mt-1">
@@ -320,8 +244,8 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => refetch()}
               disabled={isLoading}
               size="sm"
@@ -330,7 +254,7 @@ export default function Dashboard() {
               Atualizar
             </Button>
             {isAdmin && (
-              <Button 
+              <Button
                 onClick={() => setShowForm(true)}
                 className="bg-blue-600 hover:bg-blue-700"
                 size="sm"
@@ -342,23 +266,20 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        {/* Stats */}
         <StatsCards orders={orders} />
 
-        {/* Filters */}
-        <OSFilters 
-          filters={filters} 
-          setFilters={setFilters} 
-          onClear={clearFilters} 
+        <OSFilters
+          filters={filters}
+          setFilters={setFilters}
+          onClear={clearFilters}
         />
 
-        {/* Orders Grid */}
         {isLoading ? (
           <div className="flex justify-center items-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : sortedOrders.length === 0 ? (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="text-center py-20 bg-white rounded-xl border border-slate-200"
@@ -372,7 +293,7 @@ export default function Dashboard() {
             <p className="text-slate-500 mb-4">
               {filters.search || filters.priority !== 'all' || filters.status !== 'all'
                 ? 'Tente ajustar os filtros'
-                : 'Crie uma nova ordem de serviço para começar'}
+                : 'Conectado ao servidor. Aguardando ordens de serviço.'}
             </p>
             {isAdmin && filters.priority === 'all' && filters.status === 'all' && !filters.search && (
               <Button onClick={() => setShowForm(true)} className="bg-blue-600 hover:bg-blue-700">
@@ -382,14 +303,13 @@ export default function Dashboard() {
             )}
           </motion.div>
         ) : (
-          <OSCardGrid 
+          <OSCardGrid
             orders={sortedOrders}
             onReorder={handleReorder}
             onPriorityChange={handlePriorityChange}
           />
         )}
 
-        {/* Form Modal */}
         <OSForm
           open={showForm}
           onOpenChange={setShowForm}

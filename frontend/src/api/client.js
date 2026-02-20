@@ -1,4 +1,5 @@
-// frontend/src/api/client.js
+// frontend/src/api/client.js  — APP CLIENTE
+// Se serverConfig não estiver configurado, redireciona para /setup
 
 function getBaseURL() {
   if (import.meta.env.VITE_API_URL) {
@@ -11,7 +12,13 @@ function getBaseURL() {
       if (config?.baseURL) return config.baseURL.replace(/\/$/, '');
     }
   } catch {}
-  return 'http://localhost:5000';
+
+  // Sem serverConfig: redireciona para setup em vez de usar localhost
+  console.warn('⚠️ serverConfig não encontrado — redirecionando para /setup');
+  if (typeof window !== 'undefined' && !window.location.pathname.includes('/setup')) {
+    window.location.href = '/setup';
+  }
+  throw new Error('Servidor não configurado. Configure o IP do servidor primeiro.');
 }
 
 async function fetchAPI(endpoint, options = {}) {
@@ -51,12 +58,10 @@ export const auth = {
     if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
     return data;
   },
-
   me: async () => {
     const data = await fetchAPI('/auth/me');
     return data.user;
   },
-
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -64,35 +69,11 @@ export const auth = {
 };
 
 export const users = {
-  list: async () => {
-    const data = await fetchAPI('/users');
-    return data.users;
-  },
-
-  getById: async (id) => {
-    const data = await fetchAPI(`/users/${id}`);
-    return data.user;
-  },
-
-  create: async (userData) => {
-    const data = await fetchAPI('/users', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-    return data.user;
-  },
-
-  update: async (id, userData) => {
-    const data = await fetchAPI(`/users/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(userData),
-    });
-    return data.user;
-  },
-
-  delete: async (id) => {
-    return fetchAPI(`/users/${id}`, { method: 'DELETE' });
-  },
+  list: async () => (await fetchAPI('/users')).users,
+  getById: async (id) => (await fetchAPI(`/users/${id}`)).user,
+  create: async (data) => (await fetchAPI('/users', { method: 'POST', body: JSON.stringify(data) })).user,
+  update: async (id, data) => (await fetchAPI(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })).user,
+  delete: async (id) => fetchAPI(`/users/${id}`, { method: 'DELETE' }),
 };
 
 export const serviceOrders = {
@@ -103,43 +84,13 @@ export const serviceOrders = {
     if (filters.clientName) params.append('clientName', filters.clientName);
     if (filters.equipmentName) params.append('equipmentName', filters.equipmentName);
     const qs = params.toString();
-    const data = await fetchAPI(qs ? `/os?${qs}` : '/os');
-    return data.orders;
+    return (await fetchAPI(qs ? `/os?${qs}` : '/os')).orders;
   },
-
-  getById: async (id) => {
-    const data = await fetchAPI(`/os/${id}`);
-    return data.order;
-  },
-
-  create: async (osData) => {
-    const data = await fetchAPI('/os', {
-      method: 'POST',
-      body: JSON.stringify(osData),
-    });
-    return data.order;
-  },
-
-  update: async (id, osData) => {
-    const data = await fetchAPI(`/os/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(osData),
-    });
-    return data.order;
-  },
-
-  delete: async (id) => {
-    return fetchAPI(`/os/${id}`, { method: 'DELETE' });
-  },
-
-  addComment: async (osId, commentData) => {
-    const data = await fetchAPI(`/os/${osId}/comments`, {
-      method: 'POST',
-      body: JSON.stringify(commentData),
-    });
-    return data.comment;
-  },
-
+  getById: async (id) => (await fetchAPI(`/os/${id}`)).order,
+  create: async (data) => (await fetchAPI('/os', { method: 'POST', body: JSON.stringify(data) })).order,
+  update: async (id, data) => (await fetchAPI(`/os/${id}`, { method: 'PUT', body: JSON.stringify(data) })).order,
+  delete: async (id) => fetchAPI(`/os/${id}`, { method: 'DELETE' }),
+  addComment: async (osId, data) => (await fetchAPI(`/os/${osId}/comments`, { method: 'POST', body: JSON.stringify(data) })).comment,
   history: async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.startDate) params.append('startDate', filters.startDate);
@@ -147,8 +98,7 @@ export const serviceOrders = {
     if (filters.clientName) params.append('clientName', filters.clientName);
     if (filters.equipmentName) params.append('equipmentName', filters.equipmentName);
     const qs = params.toString();
-    const data = await fetchAPI(qs ? `/os/history?${qs}` : '/os/history');
-    return data.orders;
+    return (await fetchAPI(qs ? `/os/history?${qs}` : '/os/history')).orders;
   },
 };
 

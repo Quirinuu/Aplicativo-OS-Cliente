@@ -1,6 +1,4 @@
 import path from 'path';
-
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -15,22 +13,6 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    proxy: {
-      // Proxy para backend em desenvolvimento
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-      '/socket.io': {
-        target: 'http://localhost:5000',
-        ws: true,
-      }
-    }
+    // Sem proxy — o cliente conecta diretamente no IP configurado via serverConfig
   },
-  define: {
-    // Variáveis de ambiente para o frontend
-    'import.meta.env.VITE_API_URL': JSON.stringify('http://localhost:5000'),
-    'import.meta.env.VITE_WS_URL': JSON.stringify('ws://localhost:5000'),
-  }
 });

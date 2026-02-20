@@ -1,8 +1,7 @@
-// frontend/src/api/socket.js
+// frontend/src/api/socket.js  — APP CLIENTE
 import { io } from 'socket.io-client';
 import { toast } from 'sonner';
 
-// Mesma lógica do client.js — não importa de lá para evitar dependência circular
 function getBackendURL() {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL.replace(/\/$/, '');
@@ -14,7 +13,10 @@ function getBackendURL() {
       if (config?.baseURL) return config.baseURL.replace(/\/$/, '');
     }
   } catch {}
-  return 'http://localhost:5000';
+
+  // Sem config: não conecta, retorna null
+  console.warn('⚠️ serverConfig não encontrado — socket não conectado');
+  return null;
 }
 
 class SocketService {
@@ -34,6 +36,8 @@ class SocketService {
     }
 
     const SERVER_URL = getBackendURL();
+    if (!SERVER_URL) return; // Sem config, não conecta
+
     console.log('🔌 Conectando socket em:', SERVER_URL);
 
     this.socket = io(SERVER_URL, {
@@ -61,7 +65,6 @@ class SocketService {
       this._notifyConnection(false);
     });
 
-    // Encaminha eventos do servidor para os listeners registrados
     ['os:created', 'os:updated', 'os:deleted', 'os:comment', 'server:info'].forEach(event => {
       this.socket.on(event, (data) => {
         console.log(`📨 ${event}`, data);
@@ -93,7 +96,6 @@ class SocketService {
     }
   }
 
-  // Registra listener de status; retorna função de cleanup
   onConnectionChange(callback) {
     this._connectionListeners.push(callback);
     return () => {

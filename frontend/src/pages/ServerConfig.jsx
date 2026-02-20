@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Server, Wifi, WifiOff, Loader2, CheckCircle } from "lucide-react";
+import { Server, Wifi, WifiOff, Loader2, CheckCircle, AlertTriangle } from "lucide-react";
 
 function getSavedConfig() {
   try {
@@ -24,9 +24,19 @@ export default function ServerConfig() {
   const [status, setStatus] = useState('idle'); // idle | testing | ok | error
   const [errorMsg, setErrorMsg] = useState('');
 
+  function validateIP(value) {
+    const v = value.trim().toLowerCase();
+    if (v === 'localhost' || v === '127.0.0.1') {
+      return 'Use o IP da rede (ex: 192.168.0.100), não localhost. Este app conecta a outro PC.';
+    }
+    if (!v) return 'Digite o IP do servidor';
+    return null;
+  }
+
   async function testConnection(testIp, testPort) {
     setStatus('testing');
     setErrorMsg('');
+
     const url = `http://${testIp.trim()}:${testPort.trim()}/health`;
     try {
       const controller = new AbortController();
@@ -40,22 +50,31 @@ export default function ServerConfig() {
       throw new Error('Resposta inesperada');
     } catch (err) {
       setErrorMsg(err.name === 'AbortError'
-        ? 'Tempo esgotado. Verifique o IP e a porta.'
-        : 'Não foi possível conectar. Verifique se o servidor está rodando.');
+        ? 'Tempo esgotado. Verifique se o IP está correto e o servidor está ligado.'
+        : 'Não foi possível conectar. Verifique IP, porta e se o servidor está rodando.');
       setStatus('error');
       return false;
     }
   }
 
   async function handleConnect() {
-    if (!ip.trim()) { toast.error('Digite o IP do servidor'); return; }
+    const validationError = validateIP(ip);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
     const ok = await testConnection(ip, port || '5000');
     if (ok) {
-      localStorage.setItem('serverConfig', JSON.stringify({
+      const config = {
         ip: ip.trim(),
         port: (port || '5000').trim(),
         baseURL: `http://${ip.trim()}:${(port || '5000').trim()}`
-      }));
+      };
+      localStorage.setItem('serverConfig', JSON.stringify(config));
+      // Limpa sessão anterior (era de outro servidor)
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       toast.success('Servidor configurado!');
       setTimeout(() => navigate('/login'), 800);
     }
@@ -88,6 +107,7 @@ export default function ServerConfig() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+
             <div>
               <Label htmlFor="ip">IP do Servidor</Label>
               <Input
@@ -99,6 +119,7 @@ export default function ServerConfig() {
                 onKeyDown={e => e.key === 'Enter' && handleConnect()}
               />
             </div>
+
             <div>
               <Label htmlFor="port">Porta</Label>
               <Input
@@ -111,6 +132,14 @@ export default function ServerConfig() {
               />
             </div>
 
+            {/* Aviso se digitou localhost */}
+            {(ip.trim().toLowerCase() === 'localhost' || ip.trim() === '127.0.0.1') && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2 text-sm text-yellow-800">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>Use o <strong>IP da rede</strong> do servidor (ex: 192.168.0.100), não localhost. Este app conecta a outro computador.</span>
+              </div>
+            )}
+
             {status !== 'idle' && (
               <div className={`p-3 rounded-lg flex items-center gap-2 text-sm
                 ${status === 'testing' ? 'bg-blue-50 text-blue-700' : ''}
@@ -122,7 +151,7 @@ export default function ServerConfig() {
                 {status === 'error'   && <WifiOff className="w-4 h-4 flex-shrink-0" />}
                 <span>
                   {status === 'testing' && 'Testando conexão...'}
-                  {status === 'ok'      && 'Servidor encontrado!'}
+                  {status === 'ok'      && 'Servidor encontrado! Redirecionando...'}
                   {status === 'error'   && errorMsg}
                 </span>
               </div>
@@ -145,9 +174,10 @@ export default function ServerConfig() {
               </Button>
             )}
 
-            <div className="p-3 bg-slate-50 rounded-lg text-xs text-slate-500">
-              <p className="font-medium text-slate-600 mb-1">Como descobrir o IP do servidor:</p>
+            <div className="p-3 bg-slate-50 rounded-lg text-xs text-slate-500 space-y-1">
+              <p className="font-medium text-slate-600">Como descobrir o IP do servidor:</p>
               <p>No PC com o backend, abra o CMD e digite <code className="bg-slate-200 px-1 rounded">ipconfig</code>. Procure "Endereço IPv4".</p>
+              <p>Exemplo: <code className="bg-slate-200 px-1 rounded">192.168.0.105</code></p>
             </div>
           </CardContent>
         </Card>
