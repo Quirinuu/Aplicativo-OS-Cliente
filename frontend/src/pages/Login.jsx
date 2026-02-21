@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { toast } from "sonner";
 import { Wrench, Loader2 } from "lucide-react";
 import api from '@/api/client';
+import { socketService } from '@/api/socket';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -26,7 +27,12 @@ export default function Login() {
 
     try {
       const data = await api.auth.login(username, password);
-      
+
+      // Conecta o socket imediatamente após o login, para os listeners
+      // do SocketManager (App.jsx) já estarem prontos quando o socket conectar
+      const token = localStorage.getItem('token');
+      if (token) socketService.connect(token);
+
       toast.success(`Bem-vindo, ${data.user.fullName}!`);
       navigate('/dashboard');
     } catch (error) {

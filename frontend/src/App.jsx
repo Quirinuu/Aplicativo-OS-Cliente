@@ -45,18 +45,12 @@ function ProtectedRoute({ children, requireAdmin = false }) {
   return children;
 }
 
-// Gerencia o socket e invalida o cache do React Query em tempo real.
-// IMPORTANTE: NÃO desconecta o socket no cleanup — ele deve persistir durante toda
-// a sessão. Apenas o destroy() chamado no logout encerra a conexão.
 function SocketManager() {
   const qc = useQueryClient();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token || !isServerConfigured()) return;
-
-    socketService.connect(token); // no-op se já estiver conectado
-
+    // Registra listeners SEMPRE — ficam na fila e disparam quando o socket conectar.
+    // Sem isso, trocar de página apagava os listeners e outros clientes paravam de atualizar.
     const onCreated = () => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['history'] });
@@ -75,6 +69,7 @@ function SocketManager() {
 
     const onComment = ({ osId }) => {
       if (osId) qc.invalidateQueries({ queryKey: ['order', String(osId)] });
+      qc.invalidateQueries({ queryKey: ['orders'] });
     };
 
     socketService.on('os:created', onCreated);
@@ -82,8 +77,13 @@ function SocketManager() {
     socketService.on('os:deleted', onDeleted);
     socketService.on('os:comment', onComment);
 
+    // Tenta conectar se já houver token (usuário já logado ao reabrir o app)
+    const token = localStorage.getItem('token');
+    if (token && isServerConfigured()) {
+      socketService.connect(token);
+    }
+
     return () => {
-      // Remove só os listeners deste efeito. NÃO chama disconnect().
       socketService.off('os:created', onCreated);
       socketService.off('os:updated', onUpdated);
       socketService.off('os:deleted', onDeleted);

@@ -53,15 +53,14 @@ export default function Layout({ children, currentPageName }) {
       });
   }, [navigate, location.pathname]);
 
-  // Monitora status do WebSocket — listener + polling como fallback
   useEffect(() => {
     setIsConnected(socketService.isConnected);
     const cleanup = socketService.onConnectionChange(setIsConnected);
 
-    // Polling a cada 2s como garantia extra caso o evento não chegue
+    // Polling a cada 500ms — badge atualiza quase instantaneamente após conectar
     const poll = setInterval(() => {
       setIsConnected(socketService.isConnected);
-    }, 2000);
+    }, 500);
 
     return () => {
       cleanup();
@@ -71,7 +70,7 @@ export default function Layout({ children, currentPageName }) {
 
   const handleLogout = () => {
     api.auth.logout();
-    socketService.destroy(); // destroy() no logout, não disconnect()
+    socketService.destroy();
     navigate('/login');
     toast.success('Logout realizado');
   };
@@ -106,11 +105,9 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <div className="container mx-auto flex h-16 items-center px-4 sm:px-6">
 
-          {/* Logo e Menu Mobile */}
           <div className="flex items-center gap-4">
             <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -122,7 +119,6 @@ export default function Layout({ children, currentPageName }) {
             </Link>
           </div>
 
-          {/* Nav Desktop */}
           <nav className="hidden md:flex items-center space-x-6 ml-10">
             {navItems.map((item) => (
               <Link
@@ -139,15 +135,12 @@ export default function Layout({ children, currentPageName }) {
             ))}
           </nav>
 
-          {/* Título da página */}
           <div className="flex-1 flex justify-center md:justify-start md:ml-10">
             <h1 className="text-lg font-semibold text-gray-900">{getPageTitle()}</h1>
           </div>
 
-          {/* Badge de status + Menu usuário */}
           <div className="flex items-center space-x-3">
 
-            {/* Badge de status WebSocket */}
             <div
               className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
                 isConnected
@@ -162,7 +155,6 @@ export default function Layout({ children, currentPageName }) {
               }
             </div>
 
-            {/* Avatar + Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full p-0">
@@ -227,7 +219,6 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </div>
 
-        {/* Menu Mobile */}
         <AnimatePresence>
           {mobileMenuOpen && (
             <motion.div
@@ -279,7 +270,6 @@ export default function Layout({ children, currentPageName }) {
         </AnimatePresence>
       </header>
 
-      {/* Conteúdo */}
       <main className="container mx-auto px-4 py-6 sm:px-6">
         {children}
       </main>

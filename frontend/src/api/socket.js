@@ -13,7 +13,6 @@ function getBackendURL() {
     }
   } catch {}
 
-  // Sem config: usa o mesmo host (funciona para o servidor)
   const { protocol, hostname, port } = window.location;
   const p = port || (protocol === 'https:' ? '443' : '80');
   return `${protocol}//${hostname}:${p}`;
@@ -27,13 +26,8 @@ class SocketService {
   }
 
   connect(token) {
-    if (this.socket?.connected) return;
-
-    if (this.socket) {
-      this.socket.removeAllListeners();
-      this.socket.disconnect();
-      this.socket = null;
-    }
+    // Se já existe socket (conectando ou conectado), não recria — evita loop de reconexão
+    if (this.socket) return;
 
     const SERVER_URL = getBackendURL();
     if (!SERVER_URL) return;
@@ -42,7 +36,7 @@ class SocketService {
 
     this.socket = io(SERVER_URL, {
       auth: { token },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionDelay: 2000,
       reconnectionAttempts: 10,
@@ -73,7 +67,6 @@ class SocketService {
     });
   }
 
-  // Desconecta o socket MAS mantém os listeners de conexão registrados
   disconnect() {
     if (this.socket) {
       this.socket.removeAllListeners();
@@ -81,10 +74,8 @@ class SocketService {
       this.socket = null;
     }
     this.listeners.clear();
-    // NÃO limpa _connectionListeners aqui — isso quebrava o badge de status
   }
 
-  // Destroi completamente (usar só no logout real)
   destroy() {
     this.disconnect();
     this._connectionListeners = [];
