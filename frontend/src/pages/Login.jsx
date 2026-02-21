@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Wrench, Loader2 } from "lucide-react";
+import { Wrench, Loader2, Server } from "lucide-react";
 import api from '@/api/client';
 import { socketService } from '@/api/socket';
 
@@ -28,8 +28,6 @@ export default function Login() {
     try {
       const data = await api.auth.login(username, password);
 
-      // Conecta o socket imediatamente após o login, para os listeners
-      // do SocketManager (App.jsx) já estarem prontos quando o socket conectar
       const token = localStorage.getItem('token');
       if (token) socketService.connect(token);
 
@@ -40,6 +38,12 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleChangeServer = () => {
+    socketService.destroy();
+    localStorage.removeItem('serverConfig');
+    navigate('/setup');
   };
 
   return (
@@ -108,6 +112,17 @@ export default function Login() {
               <p><strong>Admin:</strong> admin / admin123</p>
               <p><strong>Técnico:</strong> tecnico / tech123</p>
             </div>
+          </div>
+
+          {/* Botão para trocar o IP do servidor */}
+          <div className="mt-4 text-center">
+            <button
+              onClick={handleChangeServer}
+              className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <Server className="w-3 h-3" />
+              Servidor offline? Trocar IP
+            </button>
           </div>
         </CardContent>
       </Card>
