@@ -1,4 +1,4 @@
-// frontend/src/Layout.jsx
+// frontend/src/Layout.jsx — APP CLIENTE
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -53,32 +53,38 @@ export default function Layout({ children, currentPageName }) {
       });
   }, [navigate, location.pathname]);
 
-  // Monitora status do WebSocket
+  // Monitora status do WebSocket — listener + polling como fallback
   useEffect(() => {
     setIsConnected(socketService.isConnected);
     const cleanup = socketService.onConnectionChange(setIsConnected);
-    return cleanup;
+
+    // Polling a cada 2s como garantia extra caso o evento não chegue
+    const poll = setInterval(() => {
+      setIsConnected(socketService.isConnected);
+    }, 2000);
+
+    return () => {
+      cleanup();
+      clearInterval(poll);
+    };
   }, []);
 
   const handleLogout = () => {
     api.auth.logout();
-    socketService.disconnect();
+    socketService.destroy(); // destroy() no logout, não disconnect()
     navigate('/login');
     toast.success('Logout realizado');
   };
 
   const handleChangeServer = () => {
-    // Limpa tudo e manda pra tela de configuração
     api.auth.logout();
-    socketService.disconnect();
+    socketService.destroy();
     localStorage.removeItem('serverConfig');
     navigate('/setup');
     toast.info('Configure o servidor');
   };
 
   const isAdmin = user?.role === 'admin';
-
-  // Verifica se existe tela de setup (app cliente)
   const hasSetupPage = !!localStorage.getItem('serverConfig');
 
   const navItems = [
@@ -138,7 +144,7 @@ export default function Layout({ children, currentPageName }) {
             <h1 className="text-lg font-semibold text-gray-900">{getPageTitle()}</h1>
           </div>
 
-          {/* Indicador de conexão + Menu usuário */}
+          {/* Badge de status + Menu usuário */}
           <div className="flex items-center space-x-3">
 
             {/* Badge de status WebSocket */}
@@ -207,7 +213,6 @@ export default function Layout({ children, currentPageName }) {
 
                 <DropdownMenuSeparator />
 
-                {/* Opção de trocar servidor — visível quando serverConfig existe (app cliente) */}
                 {hasSetupPage && (
                   <DropdownMenuItem onClick={handleChangeServer} className="text-orange-600">
                     <Server className="w-4 h-4 mr-2" /> Trocar Servidor
@@ -248,7 +253,6 @@ export default function Layout({ children, currentPageName }) {
                 ))}
 
                 <div className="pt-4 border-t">
-                  {/* Status mobile */}
                   <div className={`flex items-center gap-1.5 mb-2 text-xs font-medium ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
                     {isConnected ? <><Wifi className="w-3 h-3" /> Online</> : <><WifiOff className="w-3 h-3" /> Offline</>}
                   </div>

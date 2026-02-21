@@ -36,13 +36,14 @@ function createWindow() {
     show: false
   });
 
-  const url = isDev ? 'http://localhost:3000' : path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
-
   if (isDev) {
-    mainWindow.loadURL(url);
+    mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'));
+    // Em produção o frontend está em extraResources: resources/frontend/dist/
+    const indexPath = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html');
+    console.log(`📂 Carregando frontend de: ${indexPath}`);
+    mainWindow.loadFile(indexPath);
   }
 
   mainWindow.once('ready-to-show', () => {
@@ -52,6 +53,10 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`❌ Falha ao carregar (${errorCode}): ${errorDescription}`);
   });
 }
 
@@ -84,7 +89,7 @@ if (!gotTheLock) {
 }
 
 app.whenReady().then(() => {
-  console.log('🚀 OS Manager Client iniciando...');
+  console.log('🚀 OS Manager Cliente iniciando...');
   createWindow();
 
   app.on('activate', () => {

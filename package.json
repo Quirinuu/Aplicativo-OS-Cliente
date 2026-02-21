@@ -1,7 +1,7 @@
 {
-  "name": "os-manager-desktop",
+  "name": "os-manager-cliente",
   "version": "1.0.0",
-  "description": "Sistema de Gestão de Ordens de Serviço - Aplicativo Desktop",
+  "description": "Sistema de Gestão de Ordens de Serviço - Cliente",
   "main": "electron/main.js",
   "author": "OS Manager Team",
   "license": "MIT",
@@ -26,21 +26,20 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.osmanager.desktop",
-    "productName": "OS Manager",
+    "appId": "com.osmanager.cliente",
+    "productName": "OS Manager - Cliente",
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
     "files": [
       "electron/**/*",
-      "frontend/dist/**/*",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "frontend/dist",
-        "to": "app/frontend/dist",
+        "to": "frontend/dist",
         "filter": ["**/*"]
       }
     ],
@@ -61,11 +60,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "OS Manager Cliente",
+      "shortcutName": "OS Manager - Cliente",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
+      "include": "installer.nsh",
       "warningsAsErrors": false
     },
     "compression": "store",

@@ -1,4 +1,3 @@
-// frontend/src/api/socket.js  — APP CLIENTE
 import { io } from 'socket.io-client';
 import { toast } from 'sonner';
 
@@ -14,9 +13,10 @@ function getBackendURL() {
     }
   } catch {}
 
-  // Sem config: não conecta, retorna null
-  console.warn('⚠️ serverConfig não encontrado — socket não conectado');
-  return null;
+  // Sem config: usa o mesmo host (funciona para o servidor)
+  const { protocol, hostname, port } = window.location;
+  const p = port || (protocol === 'https:' ? '443' : '80');
+  return `${protocol}//${hostname}:${p}`;
 }
 
 class SocketService {
@@ -36,7 +36,7 @@ class SocketService {
     }
 
     const SERVER_URL = getBackendURL();
-    if (!SERVER_URL) return; // Sem config, não conecta
+    if (!SERVER_URL) return;
 
     console.log('🔌 Conectando socket em:', SERVER_URL);
 
@@ -73,6 +73,7 @@ class SocketService {
     });
   }
 
+  // Desconecta o socket MAS mantém os listeners de conexão registrados
   disconnect() {
     if (this.socket) {
       this.socket.removeAllListeners();
@@ -80,6 +81,12 @@ class SocketService {
       this.socket = null;
     }
     this.listeners.clear();
+    // NÃO limpa _connectionListeners aqui — isso quebrava o badge de status
+  }
+
+  // Destroi completamente (usar só no logout real)
+  destroy() {
+    this.disconnect();
     this._connectionListeners = [];
   }
 
