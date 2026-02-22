@@ -1,6 +1,4 @@
 // electron/shoficina-client.js
-// Roda no processo principal do Electron — lê MDB local e envia para o servidor
-
 const { execFileSync } = require('child_process');
 const path  = require('path');
 const fs    = require('fs');
@@ -12,7 +10,8 @@ const MDB_PATH      = process.env.SHOFICINA_PATH     || 'C:\\SHARMAQ\\SHOficina\
 const MDB_PASS      = process.env.SHOFICINA_PASS     || '!(&&!!)&';
 const POLL_INTERVAL = parseInt(process.env.SHOFICINA_INTERVAL || '5000');
 
-// Fila local para OS que falharam ao enviar (servidor offline)
+const STATUS_ORDER = { RECEIVED: 0, WAITING: 1, IN_PROGRESS: 2, COMPLETED: 3 };
+
 const QUEUE_FILE = path.join(os.homedir(), 'AppData', 'Roaming', 'os-manager-cliente', 'sho_queue.json');
 
 function loadQueue() {
@@ -32,17 +31,16 @@ function saveQueue(queue) {
   }
 }
 
-// ── HTTP helper ────────────────────────────────────────────────────────────────
 function apiRequest(serverUrl, token, method, endpoint, body) {
   return new Promise((resolve, reject) => {
-    const url    = new URL(endpoint, serverUrl);
-    const data   = body ? JSON.stringify(body) : null;
-    const lib    = url.protocol === 'https:' ? https : http;
+    const url  = new URL(endpoint, serverUrl);
+    const data = body ? JSON.stringify(body) : null;
+    const lib  = url.protocol === 'https:' ? https : http;
 
     const req = lib.request({
       hostname: url.hostname,
       port:     url.port,
-      path:     url.pathname,
+      path:     url.pathname + url.search,
       method,
       headers: {
         'Content-Type':  'application/json',
@@ -65,7 +63,6 @@ function apiRequest(serverUrl, token, method, endpoint, body) {
   });
 }
 
-// ── PowerShell MDB ─────────────────────────────────────────────────────────────
 function runPS1(scriptContent) {
   const tmpFile = path.join(os.tmpdir(), `shoc_${Date.now()}.ps1`);
   try {
@@ -130,7 +127,6 @@ if ($rows.Count -eq 0) { Write-Output '[]' } else { $rows | ConvertTo-Json -Dept
   }
 }
 
-// ── Mapeamento ─────────────────────────────────────────────────────────────────
 function mapStatus(situacao, pronto) {
   if (String(pronto || '').trim().toUpperCase() === 'S') return 'COMPLETED';
   if (!situacao) return 'RECEIVED';
@@ -151,51 +147,50 @@ function mapPriority(p) {
 }
 
 function rowToOS(row) {
-  const aparelho  = String(row['APARELHO']    || '').trim();
-  const marca     = String(row['MARCA']       || '').trim();
-  const modelo    = String(row['MODELO']      || '').trim();
-  const equipment = [aparelho, marca, modelo].filter(Boolean).join(' — ') || 'Equipamento';
+  const aparelho   = String(row['APARELHO']    || '').trim();
+  const marca      = String(row['MARCA']       || '').trim();
+  const modelo     = String(row['MODELO']      || '').trim();
+  const equipment  = [aparelho, marca, modelo].filter(Boolean).join(' — ') || 'Equipamento';
 
-  const serial    = String(row['SERIE']       || '').trim() || null;
-  const patrim    = String(row['PATRIMONIO']  || '').trim();
-  const acess     = String(row['ACESSORIO']   || '').trim();
-  const accParts  = [acess, patrim ? `Patrimônio: ${patrim}` : null].filter(Boolean);
+  const serial     = String(row['SERIE']       || '').trim() || null;
+  const patrim     = String(row['PATRIMONIO']  || '').trim();
+  const acess      = String(row['ACESSORIO']   || '').trim();
+  const accessories = [acess, patrim ? `Patrimônio: ${patrim}` : null]
+    .filter(Boolean).join(' | ') || null;
 
-  const defect    = String(row['DEFEITO']     || '').trim() || null;
-  const obs       = String(row['OBS_SERVICO'] || '').trim() || null;
-  const extId     = String(row['CODIGO']      || '').trim();
-  const status    = mapStatus(row['SITUACAO'], row['PRONTO']);
-  const priority  = mapPriority(row['PRIOR']);
+  const defect     = String(row['DEFEITO']     || '').trim() || null;
+  const obs        = String(row['OBS_SERVICO'] || '').trim() || null;
+  const extId      = String(row['CODIGO']      || '').trim();
+  const status     = mapStatus(row['SITUACAO'], row['PRONTO']);
+  const priority   = mapPriority(row['PRIOR']);
   const clientName = String(row['NOME_CLIENTE'] || row['COD_CLIENTE'] || '').trim() || 'Cliente SHOficina';
 
   return {
-    osNumber:                 extId,
+    osNumber:                  extId,
     clientName,
-    equipmentName:            equipment,
-    serialNumber:             serial,
-    accessories:              accParts.join(' | ') || null,
-    hasPreviousDefect:        !!defect,
+    equipmentName:             equipment,
+    serialNumber:              serial,
+    accessories,
+    hasPreviousDefect:         !!defect,
     previousDefectDescription: defect,
-    optionalDescription:      `[shoficina:${extId}]${obs ? ' ' + obs : ''}`.trim(),
+    optionalDescription:       `[shoficina:${extId}]${obs ? ' ' + obs : ''}`.trim(),
     priority,
-    currentStatus:            status,
-    _extId:                   extId,   // campo auxiliar, não vai para API
-    _status:                  status,  // idem
+    currentStatus:             status,
+    _extId:                    extId,
+    _status:                   status,
   };
 }
 
-// ── Classe principal ───────────────────────────────────────────────────────────
 class SHOficinaClient {
   constructor() {
-    this.timer      = null;
-    this.lastCheck  = new Date(0).toISOString();
-    this.isWindows  = process.platform === 'win32';
-    this.serverUrl  = null;
-    this.token      = null;
-    this.queue      = loadQueue();  // OS pendentes para envio
+    this.timer     = null;
+    this.lastCheck = new Date(0).toISOString();
+    this.isWindows = process.platform === 'win32';
+    this.serverUrl = null;
+    this.token     = null;
+    this.queue     = loadQueue();
   }
 
-  // Chamado pelo main.js após login ou ao iniciar com token salvo
   start({ serverUrl, token }) {
     if (!this.isWindows) return;
     if (!fs.existsSync(MDB_PATH)) {
@@ -209,9 +204,9 @@ class SHOficinaClient {
     console.log('[SHOficina-C] Iniciando sync local → servidor');
     console.log(`[SHOficina-C] MDB: ${MDB_PATH}`);
 
-    // Tenta enviar fila pendente imediatamente
     this._flushQueue();
 
+    if (this.timer) clearInterval(this.timer);
     this.timer = setInterval(() => this._poll(), POLL_INTERVAL);
     this._poll();
   }
@@ -222,7 +217,7 @@ class SHOficinaClient {
 
   updateToken(token) {
     this.token = token;
-    if (token) this._flushQueue(); // ao reconectar, tenta enviar pendentes
+    if (token) this._flushQueue();
   }
 
   updateServerUrl(serverUrl) {
@@ -240,7 +235,7 @@ class SHOficinaClient {
       WHERE O.[ENTRADA] >= #${fmt}#
     `);
 
-    if (rows === null) return; // erro de leitura MDB
+    if (rows === null) return;
 
     this.lastCheck = new Date().toISOString();
 
@@ -250,7 +245,6 @@ class SHOficinaClient {
       await this._sendOS(osData);
     }
 
-    // Sempre tenta enviar pendentes da fila
     await this._flushQueue();
   }
 
@@ -263,26 +257,34 @@ class SHOficinaClient {
     const { _extId, _status, ...payload } = osData;
 
     try {
-      // Verifica se já existe pelo número da OS
-      const check = await apiRequest(this.serverUrl, this.token, 'GET', `/api/os?search=${_extId}`, null);
-
-      // Busca OS existente com esse número
+      const check = await apiRequest(this.serverUrl, this.token, 'GET', `/api/os`, null);
       const existing = check.body?.orders?.find(o =>
         o.osNumber === _extId || o.optionalDescription?.includes(`[shoficina:${_extId}]`)
       );
 
       if (!existing) {
-        // Cria nova OS
         await apiRequest(this.serverUrl, this.token, 'POST', '/api/os', payload);
         console.log(`[SHOficina-C] ✅ OS enviada: #${_extId} — ${osData.clientName}`);
-      } else if (existing.currentStatus !== _status) {
-        // Atualiza status
+      } else {
+        // Nunca regredir OS finalizada manualmente no OS Manager
+        if (existing.currentStatus === 'COMPLETED') return;
+
+        // Não regredir status
+        const currentLevel = STATUS_ORDER[existing.currentStatus] ?? 0;
+        const newLevel     = STATUS_ORDER[_status] ?? 0;
+        if (newLevel <= currentLevel) return;
+
         await apiRequest(this.serverUrl, this.token, 'PUT', `/api/os/${existing.id}`, {
           currentStatus: _status,
           completedAt:   _status === 'COMPLETED' ? new Date().toISOString() : null,
         });
         console.log(`[SHOficina-C] 🔄 OS atualizada: #${_extId} → ${_status}`);
       }
+
+      // Enviou com sucesso — remove da fila se estava lá
+      this.queue = this.queue.filter(q => q._extId !== _extId);
+      saveQueue(this.queue);
+
     } catch (err) {
       console.warn(`[SHOficina-C] ⚠️  Servidor offline — OS #${_extId} na fila`);
       this._enqueue(osData);
@@ -290,43 +292,24 @@ class SHOficinaClient {
   }
 
   _enqueue(osData) {
-    // Evita duplicatas na fila pelo extId
-    const already = this.queue.find(q => q._extId === osData._extId);
-    if (!already) {
+    const idx = this.queue.findIndex(q => q._extId === osData._extId);
+    if (idx === -1) {
       this.queue.push(osData);
-      saveQueue(this.queue);
-    } else {
-      // Atualiza se status mudou
-      if (already._status !== osData._status) {
-        Object.assign(already, osData);
-        saveQueue(this.queue);
-      }
+    } else if (this.queue[idx]._status !== osData._status) {
+      this.queue[idx] = osData;
     }
+    saveQueue(this.queue);
   }
 
   async _flushQueue() {
     if (!this.serverUrl || !this.token || this.queue.length === 0) return;
-
     console.log(`[SHOficina-C] 📤 Enviando ${this.queue.length} OS da fila...`);
-    const failed = [];
-
-    for (const osData of this.queue) {
-      try {
-        await this._sendOS(osData);
-        // Se chegou aqui sem exception, foi enviado — remove da fila
-        // (o _sendOS vai tentar enqueue de novo se falhar, então não removemos aqui)
-      } catch {
-        failed.push(osData);
-      }
+    const snapshot = [...this.queue];
+    for (const osData of snapshot) {
+      await this._sendOS(osData);
     }
-
-    // Remove da fila os que foram enviados com sucesso
-    // (os que falharam foram re-enfileirados pelo _sendOS)
-    // Recarrega a fila do arquivo para pegar o estado atual
-    this.queue = loadQueue();
   }
 }
 
-// Singleton
 const shoClient = new SHOficinaClient();
 module.exports = { shoClient };
