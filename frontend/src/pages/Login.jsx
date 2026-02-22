@@ -17,7 +17,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!username || !password) {
       toast.error('Preencha todos os campos');
       return;
@@ -30,6 +30,13 @@ export default function Login() {
 
       const token = localStorage.getItem('token');
       if (token) socketService.connect(token);
+
+      try {
+        const cfg = JSON.parse(localStorage.getItem('serverConfig') || '{}');
+        if (cfg.baseURL && token && window.electronAPI?.updateShoAuth) {
+          window.electronAPI.updateShoAuth({ serverUrl: cfg.baseURL, token });
+        }
+      } catch {}
 
       toast.success(`Bem-vindo, ${data.user.fullName}!`);
       navigate('/dashboard');
@@ -62,7 +69,7 @@ export default function Login() {
             </CardDescription>
           </div>
         </CardHeader>
-        
+
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -77,7 +84,7 @@ export default function Login() {
                 autoFocus
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
               <Input
@@ -90,19 +97,10 @@ export default function Login() {
               />
             </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading}
-            >
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Entrando...
-                </>
-              ) : (
-                'Entrar'
-              )}
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Entrando...</>
+              ) : 'Entrar'}
             </Button>
           </form>
 

@@ -1,13 +1,11 @@
 // electron/main.js — APP CLIENTE (sem backend)
-// Conecta a um servidor backend rodando em outro PC da rede
-
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const fs = require('fs');
+const fs   = require('fs');
 const Store = require('electron-store');
+const { shoClient } = require('./shoficina-client');
 
 const store = new Store();
-
 let mainWindow;
 
 function createWindow() {
@@ -29,18 +27,17 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
     },
     autoHideMenuBar: true,
     backgroundColor: '#f5f5f5',
-    show: false
+    show: false,
   });
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
   } else {
-    // Em produção o frontend está em extraResources: resources/frontend/dist/
     const indexPath = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html');
     console.log(`📂 Carregando frontend de: ${indexPath}`);
     mainWindow.loadFile(indexPath);
@@ -51,32 +48,54 @@ function createWindow() {
     console.log('✅ Janela pronta');
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  // Tenta iniciar o sync SHOficina quando a página carrega
+  // (caso o usuário já estava logado antes de fechar o app)
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.executeJavaScript(`
+      JSON.stringify({
+        token: localStorage.getItem('token'),
+        serverConfig: localStorage.getItem('serverConfig')
+      })
+    `).then(result => {
+      try {
+        const { token, serverConfig } = JSON.parse(result);
+        const config = serverConfig ? JSON.parse(serverConfig) : null;
+        if (token && config?.baseURL) {
+          console.log('[SHOficina-C] Token encontrado — iniciando sync automático');
+          shoClient.start({ serverUrl: config.baseURL, token });
+        }
+      } catch (e) {
+        console.error('[SHOficina-C] Erro ao ler localStorage:', e.message);
+      }
+    }).catch(() => {});
   });
+
+  mainWindow.on('closed', () => { mainWindow = null; });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error(`❌ Falha ao carregar (${errorCode}): ${errorDescription}`);
   });
 }
 
-// IPC: salvar/ler configuração do servidor
-ipcMain.handle('get-server-config', () => {
-  return store.get('serverConfig', null);
+// ── IPC: configuração do servidor ─────────────────────────────────────────────
+ipcMain.handle('get-server-config', () => store.get('serverConfig', null));
+ipcMain.handle('set-server-config', (event, config) => { store.set('serverConfig', config); return true; });
+ipcMain.handle('get-app-version', () => app.getVersion());
+
+// ── IPC: sync SHOficina (chamado pelo Login após autenticação) ─────────────────
+ipcMain.on('sho:update-auth', (event, { serverUrl, token }) => {
+  console.log('[SHOficina-C] Auth atualizado via login');
+  shoClient.updateServerUrl(serverUrl);
+  shoClient.updateToken(token);
+
+  // Se o sync ainda não iniciou (primeiro login), inicia agora
+  if (!shoClient.timer) {
+    shoClient.start({ serverUrl, token });
+  }
 });
 
-ipcMain.handle('set-server-config', (event, config) => {
-  store.set('serverConfig', config);
-  return true;
-});
-
-ipcMain.handle('get-app-version', () => {
-  return app.getVersion();
-});
-
-// Instância única
+// ── Instância única ────────────────────────────────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
-
 if (!gotTheLock) {
   app.quit();
 } else {
@@ -91,14 +110,16 @@ if (!gotTheLock) {
 app.whenReady().then(() => {
   console.log('🚀 OS Manager Cliente iniciando...');
   createWindow();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    shoClient.stop();
+    app.quit();
+  }
 });
 
 process.on('uncaughtException', (error) => {
