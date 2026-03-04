@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Loader2, Wifi, WifiOff } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Wifi, WifiOff, ZoomIn, ZoomOut, Maximize2, Minimize2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
@@ -37,8 +37,9 @@ export default function Dashboard() {
   });
   const [user, setUser] = useState(null);
   const [customOrderMap, setCustomOrderMap] = useState(getCustomOrder());
-  // FIX 1: usa socketService.isConnected (getter), não isSocketConnected()
   const [isSocketConnected, setIsSocketConnected] = useState(socketService.isConnected);
+  const [zoomLevel, setZoomLevel] = useState(0);       // -2 mini … 0 padrão … 2 grande
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -48,21 +49,33 @@ export default function Dashboard() {
       .catch((error) => console.error('Erro ao carregar usuário:', error));
   }, []);
 
+  // Sync estado fullscreen com tecla ESC
+  useEffect(() => {
+    const onFSChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFSChange);
+    return () => document.removeEventListener('fullscreenchange', onFSChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
+  };
+
   // ============== WEBSOCKET ==============
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (token) {
-      socketService.connect(token);
-    }
+    if (token) socketService.connect(token);
 
-    // FIX 1: socketService.isConnected é getter, não método
     const statusInterval = setInterval(() => {
       setIsSocketConnected(socketService.isConnected);
     }, 1000);
 
-    // FIX 2: React Query v5 — invalidateQueries recebe objeto { queryKey }
     const handleOSCreated = (data) => {
-      console.log('📥 Nova OS:', data);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.info('Nova OS criada!', {
         description: `#${data?.order?.osNumber} - ${data?.order?.equipmentName}`,
@@ -71,9 +84,6 @@ export default function Dashboard() {
     };
 
     const handleOSUpdated = (data) => {
-      console.log('📝 OS atualizada:', data);
-      // FIX 3: não tenta atualizar ['orders'] direto pois a key real é ['orders', filters]
-      // invalida tudo que começa com 'orders'
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.info('OS atualizada!', {
         description: `#${data?.order?.osNumber}`,
@@ -81,14 +91,12 @@ export default function Dashboard() {
       });
     };
 
-    const handleOSDeleted = (data) => {
-      console.log('🗑️ OS deletada:', data);
+    const handleOSDeleted = () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.info('OS removida', { duration: 2000 });
     };
 
     const handleOSComment = (data) => {
-      console.log('💬 Novo comentário:', data);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.info('Novo comentário', {
         description: `OS #${data?.osId}`,
@@ -154,9 +162,7 @@ export default function Dashboard() {
     }
   });
 
-  const handleCreateOS = async (data) => {
-    await createMutation.mutateAsync(data);
-  };
+  const handleCreateOS = async (data) => { await createMutation.mutateAsync(data); };
 
   const handlePriorityChange = async (orderId, newPriority) => {
     await updateMutation.mutateAsync({ id: orderId, data: { priority: newPriority } });
@@ -214,6 +220,76 @@ export default function Dashboard() {
 
   const isAdmin = user?.role === 'admin';
 
+  // ============== FULLSCREEN MODE ==============
+  if (isFullscreen) {
+    return (
+      <div className="fixed inset-0 z-50 bg-white flex flex-col">
+        {/* Toolbar fullscreen */}
+        <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-slate-800 text-sm">OS Manager</span>
+            <span className="text-slate-400 text-xs">{sortedOrders.length} ordem{sortedOrders.length !== 1 ? 's' : ''} em aberto</span>
+            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+              isSocketConnected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {isSocketConnected
+                ? <><Wifi className="w-3 h-3" /><span>Sync</span></>
+                : <><WifiOff className="w-3 h-3" /><span>Offline</span></>
+              }
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setZoomLevel(z => Math.max(-2, z - 1))}
+              className="p-1.5 rounded text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              title="Reduzir cards"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <span className="text-xs text-slate-400 w-6 text-center">{zoomLevel > 0 ? `+${zoomLevel}` : zoomLevel}</span>
+            <button
+              onClick={() => setZoomLevel(z => Math.min(2, z + 1))}
+              className="p-1.5 rounded text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              title="Ampliar cards"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <div className="w-px h-4 bg-slate-200 mx-1" />
+            <button
+              onClick={toggleFullscreen}
+              className="p-1.5 rounded text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              title="Sair da tela cheia"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Grid de cards */}
+        <div className="flex-1 overflow-auto p-4">
+          {isLoading ? (
+            <div className="flex justify-center items-center h-full">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            </div>
+          ) : sortedOrders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+              <p className="text-lg font-medium">Nenhuma OS em aberto</p>
+              <p className="text-sm mt-1">Todas as ordens foram concluídas</p>
+            </div>
+          ) : (
+            <OSCardGrid
+              orders={sortedOrders}
+              onReorder={handleReorder}
+              onPriorityChange={handlePriorityChange}
+              zoomLevel={zoomLevel}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ============== MODO NORMAL ==============
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
@@ -243,7 +319,33 @@ export default function Dashboard() {
               Gestão de manutenção de equipamentos hospitalares
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* Controles de zoom */}
+            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1">
+              <button
+                onClick={() => setZoomLevel(z => Math.max(-2, z - 1))}
+                disabled={zoomLevel <= -2}
+                className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Reduzir cards"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-xs text-slate-400 w-5 text-center">{zoomLevel > 0 ? `+${zoomLevel}` : zoomLevel}</span>
+              <button
+                onClick={() => setZoomLevel(z => Math.min(2, z + 1))}
+                disabled={zoomLevel >= 2}
+                className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Ampliar cards"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Tela cheia */}
+            <Button variant="outline" size="sm" onClick={toggleFullscreen} title="Tela cheia">
+              <Maximize2 className="w-4 h-4" />
+            </Button>
+
             <Button
               variant="outline"
               onClick={() => refetch()}
@@ -307,6 +409,7 @@ export default function Dashboard() {
             orders={sortedOrders}
             onReorder={handleReorder}
             onPriorityChange={handlePriorityChange}
+            zoomLevel={zoomLevel}
           />
         )}
 

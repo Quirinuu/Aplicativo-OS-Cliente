@@ -19,6 +19,7 @@ function createWindow() {
   }
 
   mainWindow = new BrowserWindow({
+    title: 'OS Manager - Cliente',
     width: 1400,
     height: 900,
     minWidth: 1024,

@@ -54,6 +54,18 @@ const priorityConfig = {
   }
 };
 
+// zoomLevel: -2 (mini/muitas colunas) … 0 (padrão) … 2 (grande/poucas colunas)
+function getGridClass(zoomLevel) {
+  switch (zoomLevel) {
+    case -2: return 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8';
+    case -1: return 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
+    case  0: return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+    case  1: return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3';
+    case  2: return 'grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-2';
+    default: return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+  }
+}
+
 function OSCardGridItem({
   order,
   index,
@@ -68,6 +80,7 @@ function OSCardGridItem({
   onDrop,
   dragOverIndex,
   draggingIndex,
+  compact,
 }) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -101,69 +114,62 @@ function OSCardGridItem({
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         className="h-full"
       >
-        <Card
-          className={`h-full border-l-4 ${config.borderColor} hover:shadow-xl transition-shadow duration-200 ${config.lightBg}`}
-        >
-          <CardContent className="p-4 h-full flex flex-col">
+        <Card className={`h-full border-l-4 ${config.borderColor} hover:shadow-xl transition-shadow duration-200 ${config.lightBg}`}>
+          <CardContent className={`h-full flex flex-col ${compact ? 'p-2' : 'p-4'}`}>
 
             {/* Header */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className={`flex items-start justify-between ${compact ? 'mb-1' : 'mb-3'}`}>
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
 
-                {/* Coluna de controles: ▲ grip ▼ */}
-                <div
-                  className="flex flex-col items-center gap-0 select-none flex-shrink-0"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onMoveUp(index); }}
-                    disabled={index === 0}
-                    className={`p-1 rounded transition-colors
-                      ${index === 0 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}
-                    `}
-                    title="Mover para cima"
-                  >
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </button>
-
+                {/* Controles de ordem: ▲ grip ▼ */}
+                {!compact && (
                   <div
-                    className="text-slate-300 hover:text-blue-400 cursor-grab active:cursor-grabbing py-0.5 px-1"
-                    title="Arrastar para reorganizar"
+                    className="flex flex-col items-center gap-0 select-none flex-shrink-0"
+                    onMouseDown={(e) => e.stopPropagation()}
                   >
-                    <GripVertical className="w-4 h-4" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMoveUp(index); }}
+                      disabled={index === 0}
+                      className={`p-1 rounded transition-colors
+                        ${index === 0 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}
+                      `}
+                    >
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="text-slate-300 hover:text-blue-400 cursor-grab active:cursor-grabbing py-0.5 px-1">
+                      <GripVertical className="w-4 h-4" />
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMoveDown(index); }}
+                      disabled={index === total - 1}
+                      className={`p-1 rounded transition-colors
+                        ${index === total - 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}
+                      `}
+                    >
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onMoveDown(index); }}
-                    disabled={index === total - 1}
-                    className={`p-1 rounded transition-colors
-                      ${index === total - 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}
-                    `}
-                    title="Mover para baixo"
-                  >
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                )}
 
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-lg text-slate-800 truncate">
+                  <h3 className={`font-bold text-slate-800 truncate ${compact ? 'text-xs' : 'text-lg'}`}>
                     #{order.osNumber}
                   </h3>
-                  <p className="text-sm text-slate-600 truncate">
-                    {order.equipmentName}
-                  </p>
+                  {!compact && (
+                    <p className="text-sm text-slate-600 truncate">{order.equipmentName}</p>
+                  )}
                 </div>
               </div>
 
-              {/* Dropdown de prioridade */}
+              {/* Ícone de prioridade */}
               <div onMouseDown={(e) => e.stopPropagation()}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
-                      className={`flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-md hover:shadow-lg transition-all cursor-pointer`}
+                      className={`flex-shrink-0 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-md hover:shadow-lg transition-all cursor-pointer ${compact ? 'w-7 h-7' : 'w-12 h-12'}`}
                       title={`Prioridade: ${config.label}`}
                     >
-                      <PriorityIcon className="w-6 h-6 text-white" />
+                      <PriorityIcon className={compact ? 'w-3.5 h-3.5 text-white' : 'w-6 h-6 text-white'} />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -185,52 +191,52 @@ function OSCardGridItem({
             </div>
 
             {/* Status */}
-            <div className="mb-3">
+            <div className={compact ? 'mb-1' : 'mb-3'}>
               <StatusBadge status={order.currentStatus} />
             </div>
 
             {/* Detalhes */}
-            <div className="space-y-2 flex-1 text-sm">
-              <div className="flex items-center gap-2 text-slate-700">
-                <User className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate font-medium">{order.clientName}</span>
+            {compact ? (
+              <div className="text-xs text-slate-700 truncate font-medium">
+                {order.clientName}
               </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Calendar className="w-4 h-4 flex-shrink-0" />
-                <span>{safeFormatDate(order.createdAt)}</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Clock className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">
-                  {order.assignedToUser?.fullName || 'Não atribuído'}
-                </span>
-              </div>
-              {order.equipmentClass && (
-                <div className="text-slate-600">
-                  <span className="font-medium">Classe: </span>
-                  <span>{order.equipmentClass}</span>
+            ) : (
+              <div className="space-y-2 flex-1 text-sm">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <User className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate font-medium">{order.clientName}</span>
                 </div>
-              )}
-            </div>
-
-            {/* Rodapé — botão só aparece no hover */}
-            <div
-              className="mt-4 pt-3 border-t border-slate-200"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div
-                className={`transition-all duration-200 overflow-hidden ${
-                  isHovered ? 'opacity-100 max-h-12' : 'opacity-0 max-h-0'
-                }`}
-              >
-                <Link to={`/os/${order.id}`} className="w-full">
-                  <Button variant="outline" size="sm" className="w-full hover:bg-slate-100">
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Ver Detalhes
-                  </Button>
-                </Link>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Calendar className="w-4 h-4 flex-shrink-0" />
+                  <span>{safeFormatDate(order.createdAt)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Clock className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">
+                    {order.assignedToUser?.fullName || 'Não atribuído'}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Rodapé — botão só aparece no hover (apenas modo normal) */}
+            {!compact && (
+              <div
+                className="mt-4 pt-3 border-t border-slate-200"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className={`transition-all duration-200 overflow-hidden ${
+                  isHovered ? 'opacity-100 max-h-12' : 'opacity-0 max-h-0'
+                }`}>
+                  <Link to={`/os/${order.id}`} className="w-full">
+                    <Button variant="outline" size="sm" className="w-full hover:bg-slate-100">
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Ver Detalhes
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            )}
 
           </CardContent>
         </Card>
@@ -239,12 +245,14 @@ function OSCardGridItem({
   );
 }
 
-export default function OSCardGrid({ orders, onReorder, onPriorityChange }) {
+export default function OSCardGrid({ orders, onReorder, onPriorityChange, zoomLevel = 0 }) {
   const draggingIndexRef = useRef(null);
   const dragOverIndexRef = useRef(null);
 
   const [draggingIndex, setDraggingIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  const compact = zoomLevel <= -1;
 
   const handleMoveUp = useCallback((index) => {
     if (index === 0) return;
@@ -265,22 +273,18 @@ export default function OSCardGrid({ orders, onReorder, onPriorityChange }) {
     dragOverIndexRef.current = null;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
-    requestAnimationFrame(() => {
-      setDraggingIndex(index);
-    });
+    requestAnimationFrame(() => setDraggingIndex(index));
   }, []);
 
   const handleDragEnd = useCallback(() => {
     const from = draggingIndexRef.current;
     const to = dragOverIndexRef.current;
-
     if (from !== null && to !== null && from !== to) {
       const newOrders = [...orders];
       const [removed] = newOrders.splice(from, 1);
       newOrders.splice(to, 0, removed);
       onReorder(newOrders);
     }
-
     draggingIndexRef.current = null;
     dragOverIndexRef.current = null;
     setDraggingIndex(null);
@@ -304,7 +308,7 @@ export default function OSCardGrid({ orders, onReorder, onPriorityChange }) {
   }, []);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className={`grid gap-3 ${getGridClass(zoomLevel)}`}>
       {orders.map((order, index) => (
         <OSCardGridItem
           key={order.id}
@@ -321,6 +325,7 @@ export default function OSCardGrid({ orders, onReorder, onPriorityChange }) {
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
+          compact={compact}
         />
       ))}
     </div>
