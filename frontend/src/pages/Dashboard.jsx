@@ -38,7 +38,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [customOrderMap, setCustomOrderMap] = useState(getCustomOrder());
   const [isSocketConnected, setIsSocketConnected] = useState(socketService.isConnected);
-  const [zoomLevel, setZoomLevel] = useState(0);       // -2 mini … 0 padrão … 2 grande
+  const [zoomLevel, setZoomLevel] = useState(() => { try { return parseInt(localStorage.getItem('osZoomLevel') || '0', 10); } catch { return 0; } });
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const queryClient = useQueryClient();
@@ -223,7 +223,7 @@ export default function Dashboard() {
   // ============== FULLSCREEN MODE ==============
   if (isFullscreen) {
     return (
-      <div className="fixed inset-0 z-50 bg-white flex flex-col">
+      <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col">
         {/* Toolbar fullscreen */}
         <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -240,7 +240,7 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setZoomLevel(z => Math.max(-2, z - 1))}
+              onClick={() => setZoomLevel(z => { const n = Math.max(-2, z - 1); localStorage.setItem('osZoomLevel', n); return n; })}
               className="p-1.5 rounded text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
               title="Reduzir cards"
             >
@@ -248,7 +248,7 @@ export default function Dashboard() {
             </button>
             <span className="text-xs text-slate-400 w-6 text-center">{zoomLevel > 0 ? `+${zoomLevel}` : zoomLevel}</span>
             <button
-              onClick={() => setZoomLevel(z => Math.min(2, z + 1))}
+              onClick={() => setZoomLevel(z => { const n = Math.min(2, z + 1); localStorage.setItem('osZoomLevel', n); return n; })}
               className="p-1.5 rounded text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
               title="Ampliar cards"
             >
@@ -323,7 +323,7 @@ export default function Dashboard() {
             {/* Controles de zoom */}
             <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1">
               <button
-                onClick={() => setZoomLevel(z => Math.max(-2, z - 1))}
+                onClick={() => setZoomLevel(z => { const n = Math.max(-2, z - 1); localStorage.setItem('osZoomLevel', n); return n; })}
                 disabled={zoomLevel <= -2}
                 className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="Reduzir cards"
@@ -332,7 +332,7 @@ export default function Dashboard() {
               </button>
               <span className="text-xs text-slate-400 w-5 text-center">{zoomLevel > 0 ? `+${zoomLevel}` : zoomLevel}</span>
               <button
-                onClick={() => setZoomLevel(z => Math.min(2, z + 1))}
+                onClick={() => setZoomLevel(z => { const n = Math.min(2, z + 1); localStorage.setItem('osZoomLevel', n); return n; })}
                 disabled={zoomLevel >= 2}
                 className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title="Ampliar cards"
